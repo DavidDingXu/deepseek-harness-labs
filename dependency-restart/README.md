@@ -6,7 +6,7 @@
 node dependency-restart/run.mjs
 ```
 
-实验固定使用 `@deepseek-ai/cordis@4.0.5-alpha.1`，不需要 API Key、模型或默认用户配置。macOS、Windows 均使用相同 Node 命令；本次实跑平台是 macOS。
+实验固定使用 `@deepseek-ai/cordis@4.0.5-alpha.1`，不需要 API Key、模型或默认用户配置。macOS、Linux、Windows 均使用相同 Node 命令，离线实验由仓库 CI 检查。
 
 先预测三件事：Consumer 先安装、Provider 尚未出现时，apply 会不会执行？卸载 A 之后，旧 ping 监听器会不会留下？B 上线后，计数会从 3 还是 1 开始？
 

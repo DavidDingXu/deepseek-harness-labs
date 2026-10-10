@@ -67,7 +67,7 @@ PASS restriction: baseline=edit,read,write; review=read; write dispatch rejected
 PASS boundary: own-scope registration survives restriction; lifting it restores read-only surface
 ```
 
-所有 Context 在 finally 中退出，临时文件随后清理，原有 `DSH_HOME` 恢复。命令不依赖 shell 环境变量语法；尚未在 Windows 或 Linux 执行，不能将跨平台写法等同于三平台实测。
+所有 Context 在 finally 中退出，临时文件随后清理，原有 `DSH_HOME` 恢复。命令不依赖 shell 环境变量语法；离线实验已通过 macOS、Ubuntu、Windows 的仓库 CI。
 
 ## 把声明带到自己的组合
 

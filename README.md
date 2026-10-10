@@ -1,5 +1,7 @@
 # DeepSeek Harness 配套实验
 
+[![Learning experiments](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml/badge.svg)](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)
+
 所有实验使用当前课程基线：DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`。依赖由仓库的统一锁文件管理。Node.js 使用 `^22.19.0 || >=24.0.0`。
 
 先克隆独立仓库，在 macOS、Linux 终端或 Windows PowerShell 中执行：
@@ -11,7 +13,7 @@ npm ci --ignore-scripts
 npm test
 ```
 
-`npm test` 不连接模型，不需要凭据；配置和文件实验使用独立临时目录并自行清理。已实测环境是 macOS、Node.js v24.14.1、npm 11.11.0；跨平台命令不等于已在三种系统全部验收。
+`npm test` 不连接模型，不需要凭据；配置和文件实验使用独立临时目录并自行清理。离线实验已在 GitHub Actions 的 macOS、Ubuntu、Windows 上通过（Node.js 24）。真实模型和完整 Web 的实测环境是 macOS，二者不纳入 CI。
 
 ## 按学习顺序运行
 

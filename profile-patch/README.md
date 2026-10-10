@@ -39,6 +39,6 @@ PASS activation: real sessionTitle fallback="a b c d e" -> "a b c d e f g h i"; 
 PASS isolation: temporary DSH_HOME; source and copied base unchanged; runtime disposed
 ```
 
-脚本将自己的 `DSH_HOME` 设为临时目录，断言源文件和临时基础文件内容未变；所有 Context 退出后清理临时目录并恢复环境变量。不修改默认 Profile，不安装 JSONL 持久化，不测试配置 HMR 或文件写回；这是冷启动组合实验。命令与路径处理兼容跨平台写法，未声称 Windows/Linux 实测通过。
+脚本将自己的 `DSH_HOME` 设为临时目录，断言源文件和临时基础文件内容未变；所有 Context 退出后清理临时目录并恢复环境变量。不修改默认 Profile，不安装 JSONL 持久化，不测试配置 HMR 或文件写回；这是冷启动组合实验。跨平台离线检查见[仓库 CI](https://github.com/DavidDingXu/deepseek-harness-labs/actions)。
 
 源码对应 [base Bundle 的原始行](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/bundle/base/cordis.patch.yml#L55)、[官方 dump 合成入口](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/boot/app-boot/src/index.ts#L432)、[Patch 覆盖赋值](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/vendor/include/src/index.ts#L115)及 [SessionTitle.refresh](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/session/session-title/src/index.ts#L436)。实验运行官方 npm 包，上述链接用于定位相应实现。
