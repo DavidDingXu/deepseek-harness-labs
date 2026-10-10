@@ -1,0 +1,27 @@
+{
+  "name": "deepseek-harness-labs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/check-labs.mjs",
+    "test:live": "node real-model/run.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.1"
+  },
+  "workspaces": [
+    "runtime",
+    "preset-runtime",
+    "compaction",
+    "subagent",
+    "real-model"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "description": "DeepSeek Harness 架构与实现原理的可运行实验：插件生命周期、工具管线、会话、Preset 与 Web 扩展",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DavidDingXu/deepseek-harness-labs.git"
+  }
+}

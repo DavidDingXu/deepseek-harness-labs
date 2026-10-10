@@ -1,0 +1,5 @@
+- id: session-title
+  config:
+    fallbackMaxWords: 9
+    fallbackMaxBytes: 40
+    maxTitleBytes: 80

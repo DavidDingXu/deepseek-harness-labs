@@ -1,0 +1,7 @@
+# Minimal host row from the fixed-version base bundle; not the complete Web profile.
+- id: session-title
+  name: '@deepseek-ai/dsh-session-title'
+  config:
+    fallbackMaxWords: 5
+    fallbackMaxBytes: 40
+    maxTitleBytes: 80

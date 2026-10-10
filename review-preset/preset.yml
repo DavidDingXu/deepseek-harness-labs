@@ -1,0 +1,16 @@
+- id: review-preset
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    id: review-config
+    name: 代码审查配置实验
+    description: 最小审查组合；Agent 创建时另施加继承工具过滤。
+    plugins:
+      - id: persona
+        name: '@deepseek-ai/dsh-persona'
+        config:
+          prefix: >-
+            You review code. Inspect evidence and report findings in severity order.
+            Do not modify files.
+          includeRuntimeContext: false
+      - id: tool-fs
+        name: '@deepseek-ai/dsh-tool-fs'

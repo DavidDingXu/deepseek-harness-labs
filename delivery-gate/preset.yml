@@ -1,0 +1,50 @@
+- id: delivery-gate-preset
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    id: delivery-gate
+    name: 交付守门员实验
+    description: 只有测试和 diff 检查在最后一次改动后通过，才接受交付完成。
+    plugins:
+      - id: persona
+        name: '@deepseek-ai/dsh-persona'
+        config:
+          prefix: >-
+            You are a coding agent. Solve the task with evidence. After the final
+            workspace mutation, run exactly `node --test` and `git diff --check`,
+            then make finish_delivery your final tool call. If the gate denies the
+            call, resolve every reported check and try again.
+            For an explicitly requested negative acceptance test, follow the
+            requested tool order and stop after the expected rejection; do not
+            refresh evidence or repair that intentional failure unless asked.
+
+      - id: agent-instructions
+        name: '@deepseek-ai/dsh-agent-instructions'
+        config:
+          maxBytes: 65536
+
+      - id: tool-bash
+        name: '@deepseek-ai/dsh-tool-bash'
+        disabled: !!js process.platform === 'win32'
+
+      - id: tool-pwsh
+        name: '@deepseek-ai/dsh-tool-pwsh'
+        disabled: !!js process.platform !== 'win32'
+
+      - id: tool-fs
+        name: '@deepseek-ai/dsh-tool-fs'
+
+      - id: tool-fs-search
+        name: '@deepseek-ai/dsh-tool-fs-search'
+        config:
+          sampleOverCapGlobResults: false
+
+      - id: delivery-gate
+        name: ./delivery-gate.mjs
+        config:
+          checks:
+            - id: tests
+              command: node --test
+              tools: [bash, pwsh]
+            - id: diff-check
+              command: git diff --check
+              tools: [bash, pwsh]
