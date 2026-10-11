@@ -33,7 +33,7 @@ node runtime/run.mjs --scenario recovery
 node runtime/run.mjs --scenario all
 ```
 
-无参数等同 `all`。命令不依赖 Bash、Unix 路径或环境变量赋值，适用于 macOS、Windows 与 Linux 的 Node 环境。实际执行验证是在 macOS、Node v24.14.1、npm 11.11.0 完成；没有将此结果称为 Windows 或 Linux 实测。
+无参数等同 `all`。命令不依赖 Bash、Unix 路径或环境变量赋值，适用于 macOS、Windows 与 Linux 的 Node 环境。本地执行环境为 macOS、Node v24.14.1、npm 11.11.0；2026-10-11 的 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/runs/38140245718) 另在 Ubuntu、macOS、Windows 上运行全部离线实验通过。
 
 下载依赖时需要访问 npm registry；运行实验不连接模型，不需要模型凭据，也不读取或修改默认 profile。实验只使用内存 Session，不安装文件、进程或沙箱 Provider，不写持久化文件，也不创建临时目录。每项实验都在 `finally` 中等待 Context 退出。
 

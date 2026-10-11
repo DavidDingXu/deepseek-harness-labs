@@ -85,7 +85,7 @@ PASS changed: selected history replaced while summary waits; stale summary rejec
 All 3 compaction experiments passed; no model network call or persistence backend.
 ```
 
-所有 Context 在 finally 中等待退出。15 秒 watchdog 只用于发现挂起，不参与正常时序。实验不依赖 shell 环境变量语法；尚未在 Windows/Linux 实测。
+所有 Context 在 finally 中等待退出。15 秒 watchdog 只用于发现挂起，不参与正常时序。实验不依赖 shell 环境变量语法。2026-10-11 的 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/runs/38140245718) 已在 Ubuntu、macOS、Windows 上运行全部离线实验通过；这不包含操作系统沙箱或磁盘故障测试。
 
 这里的回放来自内存事件快照。`compactNow` 会请求 Session flush，但没有安装持久化 backend，因此没有验证磁盘 fsync、断电恢复或 flush 失败。也没有验证自动压力阈值、工具配对边缘及取消时序；这些属于不同断言。
 
