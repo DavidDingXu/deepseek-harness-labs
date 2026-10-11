@@ -94,7 +94,7 @@ Session tool/result: A, B
 
 ## retry 与 cancel 验证什么
 
-`retry` 第一次返回受控的 `SERVER_ERROR` finish。实验注册一个 `agent/request-error` middleware，仅允许一次重试。第二次成功后，断言同一 Turn、同一 Step 中有两次请求，一条 assistant/attempt、一条 assistant/message；派生 surface 只有成功的 assistant 消息。重试政策是实验插件给出的，不应称为 AgentLoop 默认自动重试所有失败。
+`retry` 第一次返回受控的 `SERVER_ERROR` finish。实验注册一个 `agent/request-error` middleware，仅允许一次重试。第二次成功后，断言同一 Turn、同一 Step 中有两次请求，一条 assistant/attempt、一条 assistant/message；派生 surface 只有成功的 assistant 消息。另断言 user/message 只接纳一次，两次请求中的用户消息完全相同，防止把请求重试误写成重新投递输入。重试政策是实验插件给出的，不应称为 AgentLoop 默认自动重试所有失败。
 
 `cancel` 先发出可见前缀 `Visible prefix`，然后等待 abort。取消之前断言 Session 尚无 assistant/message；调用真实 `agent.cancel({ kind: 'user' })` 并等待 idle 后，断言前缀被保存为 `interrupted: true` 的 assistant/message，Turn 为 aborted，Step 正常闭合。它没有假装未完成文本是完整成功答案。
 
@@ -113,14 +113,14 @@ Session tool/result: A, B
 
 ## 实际输出
 
-2026-10-10 在上述环境运行 `npm test`，退出码 0。下面是实际程序输出，不含 npm 自己打印的脚本标题：
+2026-10-11 在上述环境由根目录实验检查器运行本脚本，退出码 0。下面是实际程序输出，不含 npm 自己打印的脚本标题：
 
 ```text
 Runtime: dsh 0.2.1-alpha.2; Cordis 4.0.5-alpha.1; official npm packages
 PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assistant/attempt=0
   log: agent/inbox/spliced -> turn/start -> agent/inbox/spliced -> step/start -> system/message -> user/message -> request/header -> request/context -> assistant/message -> tool/call -> tool/result -> step/end -> step/start -> assistant/message -> step/end -> turn/end
   live: start/chunk/end; each end follows its Session commit; Session assistant/chunk=0
-PASS retry: turns=1, steps=1, requests=2, assistant/attempt=1, surface assistant messages=1
+PASS retry: turns=1, steps=1, requests=2, accepted inputs=1, identical retry input, assistant/attempt=1, surface assistant messages=1
 PASS parallel: body completion=B,A; tools/result=A,B; Session tool/result=A,B
 PASS cancel: interrupted=true, text="Visible prefix", turn=aborted, step closed
 PASS recovery: no call=TOOL_NOT_STARTED; call without result=TOOL_OUTCOME_UNKNOWN

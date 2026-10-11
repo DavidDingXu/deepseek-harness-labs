@@ -196,6 +196,10 @@ async function retryAttempt() {
     await agent.whenIdle()
     assert.equal(retries, 1)
     assert.equal(adapter.requests.length, 2)
+    assert.equal(eventsNamed(agent, 'user/message').length, 1, 'retry must not accept the input twice')
+    const requestUsers = adapter.requests.map(request => request.messages.filter(message => message.role === 'user'))
+    assert.equal(requestUsers[0].length, 1)
+    assert.deepEqual(requestUsers[1], requestUsers[0], 'both attempts use the same single input')
     assert.equal(eventsNamed(agent, 'turn/start').length, 1)
     assert.equal(eventsNamed(agent, 'step/start').length, 1)
     assert.equal(eventsNamed(agent, 'step/end').length, 1)
@@ -205,7 +209,7 @@ async function retryAttempt() {
     assert.equal(agent.session.deriveMessages().filter(message => message.role === 'assistant').length, 1)
     assert.deepEqual(observation.errors, [])
     assertSettlements(agent, observation, ['assistant/attempt', 'assistant/message'])
-    console.log('PASS retry: turns=1, steps=1, requests=2, assistant/attempt=1, surface assistant messages=1')
+    console.log('PASS retry: turns=1, steps=1, requests=2, accepted inputs=1, identical retry input, assistant/attempt=1, surface assistant messages=1')
   })
 }
 

@@ -21,9 +21,20 @@ const SUMMARY = 'Checkpoint: inspect src/main.ts; the review is still pending.'
 const textOf = messages => messages.flatMap(message => message.content)
   .filter(block => block.type === 'text').map(block => block.text).join('\n')
 
+const deferred = () => {
+  let resolve
+  const promise = new Promise(done => { resolve = done })
+  return { promise, resolve }
+}
+
 class ScriptedAdapter extends LlmAdapter {
   requests = []
-  constructor(failSummary) { super(); this.failSummary = failSummary }
+  constructor(scenario) {
+    super()
+    this.scenario = scenario
+    this.summaryEntered = deferred()
+    this.releaseSummary = deferred()
+  }
   async resolveModel(provider, model) {
     return { provider, id: model, name: model, context: { contextWindow: 100000 } }
   }
@@ -34,7 +45,11 @@ class ScriptedAdapter extends LlmAdapter {
       // The real summarizer must pass replayed evidence and append its own directive.
       assert.match(textOf(options.messages.slice(0, -1)), /ORIGINAL-EVIDENCE/)
       assert.match(textOf(options.messages.slice(-1)), /compaction engine/)
-      if (this.failSummary) throw new Error('scripted summary failure')
+      if (this.scenario === 'failure') throw new Error('scripted summary failure')
+      if (this.scenario === 'changed') {
+        this.summaryEntered.resolve()
+        await this.releaseSummary.promise
+      }
     }
     const text = summary ? SUMMARY : 'Review acknowledged.'
     yield { type: 'block-start', index: 0, blockType: 'text' }
@@ -44,9 +59,10 @@ class ScriptedAdapter extends LlmAdapter {
   }
 }
 
-async function run(failSummary) {
+async function run(scenario) {
+  const failSummary = scenario === 'failure'
   const ctx = new Context()
-  const adapter = new ScriptedAdapter(failSummary)
+  const adapter = new ScriptedAdapter(scenario)
   try {
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
@@ -58,7 +74,7 @@ async function run(failSummary) {
     await ctx.plugin(TokenMeter)
     await ctx.plugin(BasicCompactionEngine, { auto: false, compactionRetries: 0 })
     ctx.llm.registerAdapter(['scripted'], adapter)
-    const agent = await ctx.agentLoop.create(SessionId(failSummary ? 'summary-failure' : 'summary-success'), {
+    const agent = await ctx.agentLoop.create(SessionId(`summary-${scenario}`), {
       provider: 'scripted', model: 'fixture',
     })
     agent.followup(createUserMessage({
@@ -71,8 +87,32 @@ async function run(failSummary) {
     const beforeSurface = [...session.surface.nodes]
     const beforeMessages = session.deriveMessages()
     const signal = new AbortController().signal
-    let result
-    if (failSummary) {
+    let result, competingEvent, changedSurface, changedMessages
+    if (scenario === 'changed') {
+      // Keep the production summarizer pending, then replace a selected user node.
+      const rejected = assert.rejects(ctx.compaction.compactNow(agent, signal), error => {
+        assert.equal(error.code, 'changed')
+        return true
+      })
+      await adapter.summaryEntered.promise
+      try {
+        const selected = beforeLog.find(event => event.type === 'user/message')
+        assert.ok(selected && beforeSurface.includes(selected.seq))
+        session.append('user/message', createUserMessage({
+          source: { kind: 'rival' },
+          content: [{ type: 'text', text: 'UPDATED-EVIDENCE: tests now fail; inspect the new failure.' }],
+        }), {
+          surfaceOp: { op: 'replace', startSeq: selected.seq, endSeq: selected.seq },
+          sourceEventSeqs: [selected.seq],
+        })
+        competingEvent = session.snapshotEvents().at(-1)
+        changedSurface = [...session.surface.nodes]
+        changedMessages = session.deriveMessages()
+      } finally {
+        adapter.releaseSummary.resolve()
+      }
+      await rejected
+    } else if (failSummary) {
       await assert.rejects(ctx.compaction.compactNow(agent, signal), error => {
         assert.equal(error.code, 'summary')
         assert.match(String(error.cause), /scripted summary failure/)
@@ -91,7 +131,19 @@ async function run(failSummary) {
     assert.ok(end, 'the maintenance operation closes its lifecycle')
     assert.equal(end.data.turn, null, 'manual compaction does not pretend to be an active turn')
     const replacements = added.filter(event => typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace')
-    if (failSummary) {
+    if (scenario === 'changed') {
+      assert.equal(added.some(event => event.type === 'compaction/summary'), false)
+      assert.deepEqual(replacements, [competingEvent], 'only the competing edit changes the surface')
+      assert.deepEqual(session.surface.nodes, changedSurface)
+      assert.deepEqual(session.deriveMessages(), changedMessages)
+      assert.match(textOf(changedMessages), /UPDATED-EVIDENCE/)
+      assert.doesNotMatch(textOf(changedMessages), /Checkpoint:|ORIGINAL-EVIDENCE/)
+      assert.ok(end.data.error)
+      const replay = Session.create(SessionId('replayed-changed-history'), log)
+      assert.deepEqual(replay.surface.nodes, changedSurface)
+      assert.deepEqual(replay.deriveMessages(), changedMessages)
+      console.log('PASS changed: selected history replaced while summary waits; stale summary rejected; competing edit survives replay')
+    } else if (failSummary) {
       assert.equal(added.some(event => event.type === 'compaction/summary'), false)
       assert.equal(replacements.length, 0)
       assert.deepEqual(session.surface.nodes, beforeSurface)
@@ -134,7 +186,8 @@ async function run(failSummary) {
 
 const watchdog = setTimeout(() => { console.error('Compaction experiment timed out'); process.exit(1) }, 15000)
 try {
-  await run(false)
-  await run(true)
-  console.log('All 2 compaction experiments passed; no model network call or persistence backend.')
+  await run('success')
+  await run('failure')
+  await run('changed')
+  console.log('All 3 compaction experiments passed; no model network call or persistence backend.')
 } finally { clearTimeout(watchdog) }

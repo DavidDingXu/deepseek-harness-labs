@@ -1,6 +1,6 @@
 # 真实 Compaction：保留日志，替换模型历史
 
-本实验直接挂载官方 `@deepseek-ai/dsh-compaction-basic@0.2.1-alpha.2`。只用 ScriptedAdapter 提供普通回复和摘要；没有继承或覆盖压缩引擎，没有手工写 compaction 事件，也没有自行修改 surface。
+本实验直接挂载官方 `@deepseek-ai/dsh-compaction-basic@0.2.1-alpha.2`。只用 ScriptedAdapter 提供普通回复和摘要；没有继承或覆盖压缩引擎，没有手工写 compaction 事件。第三个场景通过 Session 的公开追加接口替换一条可见消息，模拟另一个扩展在摘要等待期间修改历史。
 
 ## 运行
 
@@ -33,7 +33,7 @@ await ctx.compaction.compactNow(agent, new AbortController().signal)
 
 `auto: false` 关闭自动压力触发；`compactionRetries: 0` 让实验的失败输入不进入缩小摘要的重试。手动入口仍使用真实 `agent.runMaintenance`、选区选择、TokenMeter 定价、摘要请求、选区重验和提交逻辑。
 
-Adapter 根据 `purpose === 'compaction'` 识别摘要请求，并先断言真实请求里有旧证据和引擎追加的压缩指令。成功场景返回一段短摘要，失败场景抛出指定错误。除此之外的逻辑全部运行官方包导出的实现。
+Adapter 根据 `purpose === 'compaction'` 识别摘要请求，并先断言真实请求里有旧证据和引擎追加的压缩指令。成功场景返回一段短摘要，失败场景抛出指定错误，竞争场景则先等待受控信号再返回摘要。选区、重验和压缩提交均运行官方包导出的实现。
 
 ## 成功验证的不只是“摘要变短”
 
@@ -59,21 +59,35 @@ compaction/start → compaction/summary → user/message → compaction/end
 
 本实验没有挂载 recovery listener、ToolResultPruner 或 ImageOffload 插件，因此失败发生在任何摘要替换之前。不能把结果扩大为“所有压缩失败都会恢复原 surface”：已提交替换后的 flush 失败，以及恢复策略先产生进展再失败，是另外的窗口。
 
+## 摘要等待期间，选区被另一方改掉
+
+第三套 Context 先让真实摘要请求读取旧历史，再由 Adapter 的等待点暂停返回。脚本通过 `session.append` 的 replace 操作替换选区中的用户消息，记录修改后的 surface 和派生消息，然后放行旧摘要。
+
+实验断言：
+
+- 手动压缩以 `ManualCompactionError.code === 'changed'` 拒绝。
+- 没有 compaction/summary，唯一的 replace 来自竞争方，旧摘要没有覆盖新内容。
+- 原日志前缀保持不变，compaction/end 记录失败并关闭本次尝试。
+- 当前模型历史与竞争方改完时一致；用完整日志回放后，surface 和派生消息仍一致。
+
+这个等待点保证“先取旧历史，再改选区，最后返回摘要”的顺序，不依靠计时延迟。它模拟扩展直接修改 Session，不表示普通 followup 会绕过 Agent 的维护队列。
+
 ## 实际结果
 
-2026-10-10，macOS / Node.js v24.14.1，运行退出码 0：
+2026-10-11，macOS / Node.js v24.14.1，运行退出码 0：
 
 ```text
 PASS success: real BasicCompactionEngine + scripted LLM; summary=log-only; user/message=replace
 PASS history: original log prefix unchanged; shadowed nodes leave surface; replay derives the same messages
   appended: compaction/start -> compaction/summary -> user/message -> compaction/end
 PASS failure: summary request rejected; surface unchanged; no summary or replacement; start/end closed
-All 2 compaction experiments passed; no model network call or persistence backend.
+PASS changed: selected history replaced while summary waits; stale summary rejected; competing edit survives replay
+All 3 compaction experiments passed; no model network call or persistence backend.
 ```
 
 所有 Context 在 finally 中等待退出。15 秒 watchdog 只用于发现挂起，不参与正常时序。实验不依赖 shell 环境变量语法；尚未在 Windows/Linux 实测。
 
-这里的回放来自内存事件快照。`compactNow` 会请求 Session flush，但没有安装持久化 backend，因此没有验证磁盘 fsync、断电恢复或 flush 失败。也没有验证自动压力阈值、并发选区改变、工具配对边缘及取消时序；这些属于不同断言。
+这里的回放来自内存事件快照。`compactNow` 会请求 Session flush，但没有安装持久化 backend，因此没有验证磁盘 fsync、断电恢复或 flush 失败。也没有验证自动压力阈值、工具配对边缘及取消时序；这些属于不同断言。
 
 ## 沿源码核对
 
