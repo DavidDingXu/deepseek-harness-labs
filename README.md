@@ -24,6 +24,7 @@ npm test
 | 06 | [事件分发](event-modes/README.md) | `node event-modes/run.mjs` | 0/空串短路、异步等待和错误聚合 |
 | 07 | [Waterfall](waterfall/README.md) | `node waterfall/run.mjs` | 调用栈、返回包裹与短路 |
 | 08 | [Profile/Patch](profile-patch/README.md) | `node profile-patch/run.mjs` | 合成配置与真实服务行为同时变化 |
+| 11 | [能力替换](capability-swap/README.md) | `node capability-swap/run.mjs` | 官方文件工具不改，Provider 替换、依赖撤销与拒绝无副作用 |
 | 16 | [恢复算法](runtime/README.md) | `node runtime/run.mjs --scenario recovery` | 未启动与结果未知，补齐后不重复修复 |
 | 17 | [上下文压缩](compaction/README.md) | `node compaction/run.mjs` | summary 与 replace 分离、摘要失败、回放一致 |
 | 18 | [运行代继承](subagent/README.md) | `node subagent/run.mjs` | 子 Scope 精确继承父代，最后一个使用者退出后回收 |
