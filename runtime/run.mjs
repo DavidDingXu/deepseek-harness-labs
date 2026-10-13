@@ -173,7 +173,7 @@ async function normalTurn() {
     assert.equal(eventsNamed(agent, 'turn/end')[0].data.reason.kind, 'completed')
     assert.deepEqual(observation.errors, [])
     assertSettlements(agent, observation, ['assistant/message', 'assistant/message'])
-    console.log('PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assistant/attempt=0')
+    console.log(`PASS normal: tool=${textOf(eventsNamed(agent, 'tool/result')[0].data.message)}, turns=1, steps=2, requests=2, assistant/message=2, assistant/attempt=0`)
     console.log('  log: ' + eventsOf(agent).map(event => event.type).join(' -> '))
     console.log('  live: start/chunk/end; each end follows its Session commit; Session assistant/chunk=0')
   })

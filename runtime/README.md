@@ -74,6 +74,8 @@ AgentLoop 派发这个工具，再构造第二次请求。第二次 adapter 不�
 - 每次 live end frame 都指向已有的结算事件；Session commit 在 live end 之前。
 - 每个结算事件内嵌非空 compact stream。
 
+可以在自己的实验副本中改一个条件：在 `normalTurn` 把 `b: 23` 改成 `b: 24`，把第二次 adapter 响应中 `textOf(result)` 的预期改为 `'43'`，暂时保留 Session 结果的 `'42'`。运行 basic 会在 Session 断言失败；再把该预期改为 `'43'` 后应通过。主体仍执行一次、模型仍请求两次。两处检查分别观察请求交接和会话记录，不能只改最终答案文本。恢复原值后再运行完整检查。
+
 ## 第 21 讲：order 验证 B 先完成，A 先提交
 
 adapter 一次请求两个并发安全工具，模型顺序是 A、B。每个工具由独立 Promise 门闩控制，不以“睡眠 100ms”猜测调度顺序。
@@ -91,6 +93,8 @@ Session tool/result: A, B
 这验证真实 body 并发及提交顺序的差异。实验不通过伪造日志或手动排序结果实现 A、B；顺序来自官方 AgentLoop 调度器。
 
 `setImmediate` 只提供一次事件循环检查点，让 B 的 Promise 后续处理运行；它没有时间阈值，也不决定谁先完成。15 秒 watchdog 仅用于发现挂起的实验并以非零退出，不参与正常顺序。
+
+另一个可控反例：把 `mount` 里的 `maxParallelToolCalls: 2` 改成 1。A 暂停后占住唯一执行位置，B 无法启动，实验停在 `bothStarted`，15 秒后以非零状态结束。恢复为 2 后，原顺序检查才能完成。这个对照用于确认实际并发，不是通过调整等待时间制造成功。
 
 ## retry 与 cancel 验证什么
 

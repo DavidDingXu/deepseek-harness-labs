@@ -1,6 +1,6 @@
 # 真实 Compaction：保留日志，替换模型历史
 
-本实验直接挂载官方 `@deepseek-ai/dsh-compaction-basic@0.2.1-alpha.2`。只用 ScriptedAdapter 提供普通回复和摘要；没有继承或覆盖压缩引擎，没有手工写 compaction 事件。第三个场景通过 Session 的公开追加接口替换一条可见消息，模拟另一个扩展在摘要等待期间修改历史。
+本实验直接挂载官方 `@deepseek-ai/dsh-compaction-basic@0.2.1-alpha.2`。只用 ScriptedAdapter 提供普通回复和摘要；没有继承或覆盖压缩引擎，没有手工写 compaction 事件。四个场景分别检查正常替换、摘要失败、选区内替换拒绝，以及选区外追加后仍成功提交。后两个场景通过 Session 的公开追加接口模拟扩展在摘要等待期间改变历史。
 
 ## 运行
 
@@ -33,7 +33,7 @@ await ctx.compaction.compactNow(agent, new AbortController().signal)
 
 `auto: false` 关闭自动压力触发；`compactionRetries: 0` 让实验的失败输入不进入缩小摘要的重试。手动入口仍使用真实 `agent.runMaintenance`、选区选择、TokenMeter 定价、摘要请求、选区重验和提交逻辑。
 
-Adapter 根据 `purpose === 'compaction'` 识别摘要请求，并先断言真实请求里有旧证据和引擎追加的压缩指令。成功场景返回一段短摘要，失败场景抛出指定错误，竞争场景则先等待受控信号再返回摘要。选区、重验和压缩提交均运行官方包导出的实现。
+Adapter 根据 `purpose === 'compaction'` 识别摘要请求，并先断言真实请求里有旧证据和引擎追加的压缩指令。成功场景返回一段短摘要，失败场景抛出指定错误，两种并发变化场景则先等待受控信号再返回摘要。选区、重验和压缩提交均运行官方包导出的实现。
 
 ## 成功验证的不只是“摘要变短”
 
@@ -72,9 +72,23 @@ compaction/start → compaction/summary → user/message → compaction/end
 
 这个等待点保证“先取旧历史，再改选区，最后返回摘要”的顺序，不依靠计时延迟。它模拟扩展直接修改 Session，不表示普通 followup 会绕过 Agent 的维护队列。
 
+## 摘要等待期间，选区外新增内容仍被保留
+
+第四套 Context 沿用相同等待点，但只在当前 surface 末尾追加一条 `user/message`，不替换已选中的节点。新增内容是 `LATER-EVIDENCE: also inspect src/extra.ts after the current review.`，它在摘要请求取得输入之后才出现。
+
+放行摘要后，实验断言：
+
+- `compactNow` 成功提交，新增节点不在 `shadowedSeqs` 中。
+- 原日志前缀保持不变，已选中的旧节点离开 surface，摘要替换节点进入原选区。
+- 新增节点的日志序号小于摘要替换节点，却仍位于 surface 的末尾；模型阅读顺序是摘要在前、新增内容在后。
+- 新增消息的身份与完整内容保持不变，也没有倒灌进已经取走输入的摘要请求。
+- 完整日志回放后的 surface、派生消息与运行中的结果一致，新增消息仍保留。
+
+这项正向对照验证了手动入口的 `selected-span` 规则：它要求选中的片段仍可替换，允许区外追加与压缩共存。自动入口 `compactRegion` 使用更严格的 `whole-surface` 检查，这里的成功结果不适用于那个入口。
+
 ## 实际结果
 
-2026-10-11，macOS / Node.js v24.14.1，运行退出码 0：
+2026-10-13，macOS / Node.js v24.14.1，运行退出码 0：
 
 ```text
 PASS success: real BasicCompactionEngine + scripted LLM; summary=log-only; user/message=replace
@@ -82,12 +96,13 @@ PASS history: original log prefix unchanged; shadowed nodes leave surface; repla
   appended: compaction/start -> compaction/summary -> user/message -> compaction/end
 PASS failure: summary request rejected; surface unchanged; no summary or replacement; start/end closed
 PASS changed: selected history replaced while summary waits; stale summary rejected; competing edit survives replay
-All 3 compaction experiments passed; no model network call or persistence backend.
+PASS appended: outside node retained after summary; log order=append,summary; surface order=summary,append; content and replay unchanged
+All 4 compaction experiments passed; no model network call or persistence backend.
 ```
 
-所有 Context 在 finally 中等待退出。15 秒 watchdog 只用于发现挂起，不参与正常时序。实验不依赖 shell 环境变量语法。2026-10-11 的 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/runs/38140245718) 已在 Ubuntu、macOS、Windows 上运行全部离线实验通过；这不包含操作系统沙箱或磁盘故障测试。
+所有 Context 在 finally 中等待退出。15 秒 watchdog 只用于发现挂起，不参与正常时序。实验不依赖 shell 环境变量语法。上述输出来自 macOS 本地运行；Ubuntu、macOS、Windows 的自动检查结果见 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)，查看与所用代码版本对应的运行即可。
 
-这里的回放来自内存事件快照。`compactNow` 会请求 Session flush，但没有安装持久化 backend，因此没有验证磁盘 fsync、断电恢复或 flush 失败。也没有验证自动压力阈值、工具配对边缘及取消时序；这些属于不同断言。
+这里的回放来自内存事件快照。`compactNow` 会请求 Session flush，但没有安装持久化 backend，因此没有验证磁盘 fsync、断电恢复或 flush 失败。也没有验证操作系统沙箱、自动入口的整份历史检查、自动压力阈值、工具配对边缘及取消时序；这些属于不同断言。
 
 ## 沿源码核对
 
@@ -96,5 +111,6 @@ All 3 compaction experiments passed; no model network call or persistence backen
 - [compactNow：维护窗口与手动选区](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/index.ts#L383)。
 - [默认摘要器：重放输入，调用真实 LLM seam](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/summarizer.ts#L122)。
 - [等待摘要、重验稳定性、错误关闭及 flush](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L173)。
+- [手动选区允许区外新增节点](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L442)。
 - [summary 日志与 replacement 消息分别提交](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L491)。
 - [手动失败的分类](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L277)。

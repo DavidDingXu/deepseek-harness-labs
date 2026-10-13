@@ -18,6 +18,7 @@ for (const [name, version] of Object.entries(require('./package.json').dependenc
 
 const HISTORY = 'ORIGINAL-EVIDENCE: retain decisions, pending tasks and exact file paths. '.repeat(100)
 const SUMMARY = 'Checkpoint: inspect src/main.ts; the review is still pending.'
+const LATER_CONTEXT = 'LATER-EVIDENCE: also inspect src/extra.ts after the current review.'
 const textOf = messages => messages.flatMap(message => message.content)
   .filter(block => block.type === 'text').map(block => block.text).join('\n')
 
@@ -46,7 +47,7 @@ class ScriptedAdapter extends LlmAdapter {
       assert.match(textOf(options.messages.slice(0, -1)), /ORIGINAL-EVIDENCE/)
       assert.match(textOf(options.messages.slice(-1)), /compaction engine/)
       if (this.scenario === 'failure') throw new Error('scripted summary failure')
-      if (this.scenario === 'changed') {
+      if (this.scenario === 'changed' || this.scenario === 'appended') {
         this.summaryEntered.resolve()
         await this.releaseSummary.promise
       }
@@ -87,7 +88,7 @@ async function run(scenario) {
     const beforeSurface = [...session.surface.nodes]
     const beforeMessages = session.deriveMessages()
     const signal = new AbortController().signal
-    let result, competingEvent, changedSurface, changedMessages
+    let result, competingEvent, changedSurface, changedMessages, appendedEvent
     if (scenario === 'changed') {
       // Keep the production summarizer pending, then replace a selected user node.
       const rejected = assert.rejects(ctx.compaction.compactNow(agent, signal), error => {
@@ -112,6 +113,22 @@ async function run(scenario) {
         adapter.releaseSummary.resolve()
       }
       await rejected
+    } else if (scenario === 'appended') {
+      // The selected history is already captured; append only beyond its end.
+      const pending = ctx.compaction.compactNow(agent, signal)
+      await adapter.summaryEntered.promise
+      try {
+        session.append('user/message', createUserMessage({
+          source: { kind: 'rival' },
+          content: [{ type: 'text', text: LATER_CONTEXT }],
+        }), { surfaceOp: 'append' })
+        appendedEvent = session.snapshotEvents().at(-1)
+        assert.deepEqual(session.surface.nodes, [...beforeSurface, appendedEvent.seq])
+      } finally {
+        adapter.releaseSummary.resolve()
+      }
+      result = await pending
+      assert.ok(result, 'outside append preserves a useful manual compaction')
     } else if (failSummary) {
       await assert.rejects(ctx.compaction.compactNow(agent, signal), error => {
         assert.equal(error.code, 'summary')
@@ -175,9 +192,21 @@ async function run(scenario) {
       assert.deepEqual(replay.deriveMessages(), session.deriveMessages())
       assert.deepEqual(replay.surface.nodes, session.surface.nodes)
       assert.equal(end.data.error, undefined)
-      console.log('PASS success: real BasicCompactionEngine + scripted LLM; summary=log-only; user/message=replace')
-      console.log('PASS history: original log prefix unchanged; shadowed nodes leave surface; replay derives the same messages')
-      console.log(`  appended: ${added.map(event => event.type).join(' -> ')}`)
+      if (scenario === 'appended') {
+        assert.equal(result.shadowedSeqs.includes(appendedEvent.seq), false, 'the later node is outside the selected span')
+        assert.ok(replacement.seq > appendedEvent.seq, 'the replacement is appended to the log after the later context')
+        assert.equal(session.surface.nodes.at(-1), appendedEvent.seq)
+        assert.ok(session.surface.nodes.indexOf(replacement.seq) < session.surface.nodes.indexOf(appendedEvent.seq))
+        assert.deepEqual(session.deriveMessages().at(-1), appendedEvent.data, 'later context retains its identity and content')
+        assert.deepEqual(replay.deriveMessages().at(-1), appendedEvent.data)
+        assert.match(textOf(session.deriveMessages()), /LATER-EVIDENCE/)
+        assert.doesNotMatch(textOf(adapter.requests.find(request => request.purpose === 'compaction').messages), /LATER-EVIDENCE/)
+        console.log('PASS appended: outside node retained after summary; log order=append,summary; surface order=summary,append; content and replay unchanged')
+      } else {
+        console.log('PASS success: real BasicCompactionEngine + scripted LLM; summary=log-only; user/message=replace')
+        console.log('PASS history: original log prefix unchanged; shadowed nodes leave surface; replay derives the same messages')
+        console.log(`  appended: ${added.map(event => event.type).join(' -> ')}`)
+      }
     }
   } finally {
     await ctx.fiber.dispose()
@@ -189,5 +218,6 @@ try {
   await run('success')
   await run('failure')
   await run('changed')
-  console.log('All 3 compaction experiments passed; no model network call or persistence backend.')
+  await run('appended')
+  console.log('All 4 compaction experiments passed; no model network call or persistence backend.')
 } finally { clearTimeout(watchdog) }
