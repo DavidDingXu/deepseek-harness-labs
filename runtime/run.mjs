@@ -146,6 +146,7 @@ async function normalTurn() {
     options => {
       const result = options.messages.find(message => message.role === 'tool')
       assert.ok(result, 'Second real request must include the tool result')
+      assert.equal(result.toolCallId, 'sum-1', 'The result must belong to the requested call')
       assert.equal(textOf(result), '42')
       return textChunks(`Verified tool result: ${textOf(result)}`)
     },
@@ -168,6 +169,7 @@ async function normalTurn() {
     assert.equal(eventsNamed(agent, 'step/start').length, 2)
     assert.equal(eventsNamed(agent, 'step/end').length, 2)
     assert.equal(eventsNamed(agent, 'tool/result').length, 1)
+    assert.equal(eventsNamed(agent, 'tool/result')[0].data.message.toolCallId, 'sum-1')
     assert.equal(textOf(eventsNamed(agent, 'tool/result')[0].data.message), '42')
     assert.equal(eventsNamed(agent, 'assistant/attempt').length, 0)
     assert.equal(eventsNamed(agent, 'turn/end')[0].data.reason.kind, 'completed')
