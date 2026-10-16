@@ -2,8 +2,8 @@
   name: '@deepseek-ai/dsh-agent-preset'
   config:
     id: review-plugin
-    name: 代码审查插件实验
-    description: 通过作用域插件收窄工具面，并提交结构化审查结果。
+    name: 结构化审查
+    description: 提交结构化审查报告，并在执行前拒绝 write/edit。
     plugins:
       - id: persona
         name: '@deepseek-ai/dsh-persona'

@@ -2,15 +2,15 @@
 
 本实验使用官方 npm 发布的 Harness Runtime。脚本只替换 LLM adapter 的响应与演示工具，不实现另一套 AgentLoop、Session、Tool Registry 或并行调度器。
 
-对应主线第 20 讲的 `basic`，以及第 21 讲的 `order`。`retry`、`cancel` 用来对照同一 Step 内的多次模型尝试，以及取消后的流结算。`recovery` 是第 16 讲可选的内存恢复算法对照。
+第 01 讲可以先跑 `basic`，认识一次工具往返；第 20 讲再用它核对请求、调用身份和会话记录。第 21 讲使用 `order` 观察并发中的中间状态。`retry`、`cancel` 分别对照同一 Step 内的重试，以及取消后的流结算；`recovery` 对照第 16 讲的内存恢复算法。
 
 ## 运行
 
-进入上一级 `labs` 目录，使用 Node.js `^22.19.0 || >=24.0.0`：
+在 `deepseek-harness-labs` 仓库根目录，使用 Node.js `^22.19.0 || >=24.0.0`：
 
 ```sh
 npm ci --ignore-scripts
-npm test
+node runtime/run.mjs --scenario basic
 ```
 
 只运行一项：
@@ -28,6 +28,7 @@ npm run recovery --workspace deepseek-harness-runtime-lab
 ```sh
 node runtime/run.mjs --scenario basic
 node runtime/run.mjs --scenario order
+node runtime/run.mjs --scenario retry
 node runtime/run.mjs --scenario cancel
 node runtime/run.mjs --scenario recovery
 node runtime/run.mjs --scenario all
@@ -57,7 +58,21 @@ AgentRegistry
 AgentLoop（不自动创建 Agent，并发上限 2）
 ```
 
-最后注册自定义 `ScriptedAdapter`，再 await `ctx.agentLoop.create()`。这里特别包含新版所需的 SessionProjectionRegistry，也没有沿用旧示例中同步创建 Agent 的写法。
+最后注册 `ScriptedAdapter`，再 await `ctx.agentLoop.create()`。SessionProjectionRegistry 负责把事件派生成可读状态；创建 Agent 是异步操作，要等待它就绪后再发送输入。
+
+## 代码阅读顺序
+
+先打开 [run.mjs](./run.mjs) 中的场景函数，输入、操作和断言放在同一个函数里：
+
+| 场景 | 函数 | 第一次阅读抓住什么 |
+| --- | --- | --- |
+| basic | `normalTurn()` | 第一次返回工具调用，第二次先检查请求中的工具结果 |
+| order | `parallelOrder()` | 先暂停 A，再放行 B；B 已完成时，结果还没提交 |
+| retry | `retryAttempt()` | 哪一层给出重试决定，两次请求是否使用同一份用户输入 |
+| cancel | `cancelledStream()` | 实时前缀已出现，但 Session 尚无结算消息；取消后再检查日志 |
+| recovery | `recoveryAlgorithm()` | 有无 tool/call 这一处差异，怎样改变缺失结果的解释 |
+
+随后再看 `mount()` 的服务装配与 `observe()` 的观察点。`ScriptedAdapter` 只提供可控的响应；`assertSettlements()` 同时检查 Session 接纳和实时流结束的先后关系。
 
 ## 第 20 讲：basic 验证一次真实工具往返
 
@@ -78,9 +93,9 @@ AgentLoop 派发这个工具，再构造第二次请求。第二次 adapter 不�
 
 ## 第 21 讲：order 验证 B 先完成，A 先提交
 
-adapter 一次请求两个并发安全工具，模型顺序是 A、B。每个工具由独立 Promise 门闩控制，不以“睡眠 100ms”猜测调度顺序。
+adapter 一次请求两个并发安全工具，模型顺序是 A、B。每个工具都等到脚本显式放行才返回，因此可以指定谁先完成，不用“睡眠 100ms”猜测调度顺序。
 
-实验等到 A、B 都启动，先释放 B。B 的 body 完成后，让当前 Promise continuation 收敛一轮，A 仍然阻塞。此时断言 `tools/result` 与 Session `tool/result` 都还没有出现，再释放 A。
+实验等到 A、B 都启动，先释放 B。B 的 body 完成后，再让一次事件循环中的后续处理运行，A 仍然等待。此时断言 `tools/result` 与 Session `tool/result` 都还没有出现，再释放 A。
 
 最终断言三条序列：
 

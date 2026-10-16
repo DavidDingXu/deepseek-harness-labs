@@ -37,9 +37,9 @@ try { node web/start.mjs $acceptanceRoot 3187 } finally { Remove-Item Env:OPENAI
 
 | 场景 | 操作与预期 | 反证检查 |
 | --- | --- | --- |
-| 只读配置 | 选“代码审查配置实验”，让模型读取 evidence.txt；返回 `HARNESS_WEB_EVIDENCE_72941` | 检查请求工具表只有 read；检查文件内容没有改变 |
-| 审查插件 | 选“代码审查插件实验”，要求先尝试 write 创建 guard-probe.txt，再读 sum.mjs，最后调用 review_report | write 返回 Guard 拒绝；探针文件不存在；报告为 needs_changes，指出第 2 行减法 |
-| 交付正常路径 | 选“交付守门员实验”，先 finish_delivery，再 node --test，修复 sum.mjs，运行 node --test 与 git diff --check，最后 finish_delivery | 第一次 missing 拒绝；首次测试退出 1；修复后退出 0，交付允许 |
+| 只读配置 | 选“只读审查”，让模型读取 evidence.txt；返回 `HARNESS_WEB_EVIDENCE_72941` | 检查请求工具表只有 read；检查文件内容没有改变 |
+| 审查插件 | 选“结构化审查”，要求先尝试 write 创建 guard-probe.txt，再读 sum.mjs，最后调用 review_report | write 返回 Guard 拒绝；探针文件不存在；报告为 needs_changes，指出第 2 行减法 |
+| 交付正常路径 | 选“交付检查”，先 finish_delivery，再 node --test，修复 sum.mjs，运行 node --test 与 git diff --check，最后 finish_delivery | 第一次 missing 拒绝；首次测试退出 1；修复后退出 0，交付允许 |
 | 交付过期路径 | 在已修复样例上开新的门禁会话，使用下面的负向提示 | 最后一次 write 后不能插入新检查；finish_delivery 返回 tests=stale、diff-check=stale |
 | 停止与恢复 | 有可见回答时点击“停止生成”，刷新；退出并重启服务，再打开历史会话 | 已停止内容仍存在，不能悄悄变成已完成；Session 的 interrupted 与 turn/end 对应 |
 | 窄屏操作 | 390px 打开会话、切换对话/轨迹、展开侧边栏、重开历史 | 输入区与按钮可见，没有整页横向溢出；这不是移动设备全兼容测试 |
@@ -74,6 +74,6 @@ Web 可以先创建空白 Agent，再选择 Preset。[只读钩子](../review-pr
 
 [交付插件](../delivery-gate/delivery-gate.mjs)也可能晚于 Agent 创建才挂载。它在第一次使用时核对 Agent 仍是 Registry 的活跃实例，然后初始化 missing 状态；不能把没赶上事件误当成没有合法 owner。
 
-负向测试需要让模型停在拒绝点。若 persona 一律要求修改后重跑检查，模型可能更新证据，使最后一次交付再次通过。这里为明确要求的负向验收保留停止修复的分支；真正拒绝执行的仍是 Guard，而不是 persona。
+交付 Persona 要求修改后重新检查。负向提示希望模型停在拒绝点，但它仍可能重跑检查，再次交付成功。此时要按轨迹区分：证据已更新，说明这次没有停在预定的负向条件，不能据此判断门禁失效。要稳定复现“修改后旧证据被拒绝”，运行 `node delivery-gate/run.mjs`；拒绝由 Guard 决定，模型是否按指定顺序调用工具是另一件事。
 
 已验证环境为 macOS、Node.js 24.14.1、Chrome 154、gpt-6-luna；桌面与 390px 视口均检查了上述交互。这里不覆盖全部产品设置、附件、自动化任务、多浏览器、OS 沙箱绕过、崩溃恢复或 SDK 入口。

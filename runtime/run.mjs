@@ -10,8 +10,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 
-// Only the adapter's responses and the demonstration tools are scripted.
-// The registry, loop, inbox, stream assembly, session and scheduler are official npm code.
+// 可控输入只有模型响应和演示工具；循环、会话、注册表与调度器使用官方实现。
 const require = createRequire(import.meta.url)
 const expected = require('./package.json').dependencies
 for (const [name, version] of Object.entries(expected)) {
@@ -45,6 +44,7 @@ function callsChunks(calls) {
   ]
 }
 
+// 按顺序消费响应；记录运行时真正构造的请求，供场景检查交接结果。
 class ScriptedAdapter extends LlmAdapter {
   requests = []
   constructor(script) { super(); this.script = [...script] }
@@ -64,6 +64,7 @@ class ScriptedAdapter extends LlmAdapter {
 async function mount(adapter) {
   const ctx = new Context()
   try {
+    // 先准备共享服务；agents: [] 让实验自行创建 Agent，避免启动额外任务。
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
@@ -93,6 +94,7 @@ function observe(ctx, agent) {
   const frames = []
   const order = []
   const errors = []
+  // 同时记录 Session 接纳与实时流结束，才能比较两者谁先发生。
   ctx.on('session/event', (session, event) => {
     if (session === agent.session) order.push(`commit:${event.seq}`)
   })
@@ -123,7 +125,7 @@ function assertSettlements(agent, observation, expectedTypes) {
 }
 
 async function withRuntime(name, adapter, run) {
-  // A deadline detects a broken gate or lifecycle contract; it does not drive successful ordering.
+  // 超时只负责发现挂起；成功场景的先后顺序由显式信号控制。
   const watchdog = setTimeout(() => {
     console.error(`FAIL ${name}: 15-second experiment deadline exceeded`)
     process.exit(1)
@@ -142,8 +144,11 @@ async function withRuntime(name, adapter, run) {
 async function normalTurn() {
   let bodyCalls = 0
   const adapter = new ScriptedAdapter([
+    // 第一次提出工具调用。这里没有直接执行 sum，执行工作交给 AgentLoop。
     callsChunks([{ id: 'sum-1', name: 'sum', args: { a: 19, b: 23 } }]),
     options => {
+      // 第二次先检查请求收到的结果及调用身份，再生成答案。
+      // 只核对最终答案里的 42，无法证明结果确实经过工具管线。
       const result = options.messages.find(message => message.role === 'tool')
       assert.ok(result, 'Second real request must include the tool result')
       assert.equal(result.toolCallId, 'sum-1', 'The result must belong to the requested call')
@@ -188,6 +193,7 @@ async function retryAttempt() {
   ])
   await withRuntime('retry', adapter, async ctx => {
     let retries = 0
+    // 本实验显式给出一次重试决定；这不是所有失败都会自动重试的默认承诺。
     ctx.on('agent/request-error', async ({ failure }, next) => {
       if (failure.code === 'SERVER_ERROR' && retries++ === 0) return { kind: 'retry' }
       return next()
@@ -216,6 +222,7 @@ async function retryAttempt() {
 }
 
 async function parallelOrder() {
+  // A/B 各自等待放行；另外两个信号分别确认“都已启动”和“B 已完成”。
   const gateA = deferred(), gateB = deferred(), bothStarted = deferred(), bFinished = deferred()
   const started = [], finished = [], observed = []
   const adapter = new ScriptedAdapter([
@@ -250,7 +257,8 @@ async function parallelOrder() {
       assert.deepEqual(started, ['A', 'B'])
       gateB.resolve()
       await bFinished.promise
-      // Drain B's promise continuations while A stays gated; no timing threshold is used.
+      // B 的主体已返回，再让它的后续处理运行；A 继续等待。
+      // 此时还没有结果提交，才能证明 B 真的被前面的 A 挡住。
       await nextEventLoopTurn()
       assert.deepEqual(finished, ['B'])
       assert.deepEqual(observed, [], 'B cannot cross unfinished A at tools/result')
@@ -288,6 +296,7 @@ async function cancelledStream() {
     const observation = observe(ctx, agent)
     send(agent)
     await streaming.promise
+    // 用户已经看见前缀，Session 还没有结算消息；在这个窗口发起真实取消。
     assert.equal(eventsNamed(agent, 'assistant/message').length, 0, 'Live text precedes message settlement')
     agent.cancel({ kind: 'user' })
     await agent.whenIdle()
@@ -303,7 +312,7 @@ async function cancelledStream() {
   })
 }
 
-// Construct valid in-memory open tails; this is recovery-algorithm evidence, not a crash test.
+// 构造合法的内存日志缺口，交给官方恢复算法；不实际终止进程或重试外部写入。
 async function recoveryAlgorithm() {
   for (const started of [false, true]) {
     const callId = ToolCallId(started ? 'started-call' : 'pending-call')
@@ -324,6 +333,7 @@ async function recoveryAlgorithm() {
     const tracker = new ToolCallRecovery()
     for (const event of prefix) tracker.observe(event)
     const candidates = tracker.results()
+    // 已有启动记录却缺结果，只能表达未知；无启动记录则是另一种缺口。
     const expectedCode = started ? TOOL_OUTCOME_UNKNOWN : TOOL_NOT_STARTED
     assert.equal(candidates.length, 1)
     assert.equal(candidates[0].data.error.code, expectedCode)

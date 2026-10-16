@@ -5,7 +5,7 @@
 在仓库根目录运行，需 Node `^22.19.0 || >=24.0.0` 与 Git：
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 node delivery-gate/run.mjs
 node --test delivery-gate/delivery-gate.test.mjs
 ```
@@ -32,6 +32,21 @@ Temporary repository removed.
 `finish_delivery` 的 guard 必须看到所有检查在当前 generation 通过。guard 只返回拒绝原因或 undefined，不强行 allow，因此不会覆盖其他 guard 的拒绝。状态属于 Agent；另一个 Agent 或没有 Agent 的调用不能借用这些证据。插件可在 Agent 创建后挂载：第一次使用时核对 Registry 中的活跃实例，初始化缺失证据。重新挂载不会恢复旧内存证据，必须重新运行检查。
 
 工具声明使用 `defineTool` DSL，规范数据再由 output.render 变成模型文本。`delivery_status` 只查询当前状态；`finish_delivery` 不执行测试，它验收之前的工具结果。
+
+## 从哪几段代码读起
+
+打开 [delivery-gate.mjs](./delivery-gate.mjs)，先跟踪一个 Agent 的状态：
+
+```text
+generation=0：没有检查结果 → missing
+测试和差异检查都通过，结果记在 generation=0 → passed，可以交付
+随后观察到一次 write，generation=1 → 旧结果 stale，拒绝交付
+在 generation=1 重新通过两项检查 → passed，重新允许交付
+```
+
+`observeToolResult()` 决定什么时候记录证据、什么时候增加计数；`deliveryStatus()` 将证据转换成 missing/failed/passed/stale；`apply()` 把它们接到工具结果事件与 Guard 上。最后看 [run.mjs](./run.mjs) 怎样驱动“失败检查 → 修改 → 通过检查 → 再次修改”。
+
+想确认计数何时改变，可以在自己的副本中去掉 `observeToolResult()` 里的 `state.generation += 1`，运行 `node delivery-gate/run.mjs`：第一次修复文件后，预期 generation 为 1 的断言就应失败。恢复这行后重新运行。后面的再次修改对照则说明：旧检查即便通过过，也不能继续代表新状态。
 
 ## 这次运行的范围
 

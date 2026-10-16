@@ -1,6 +1,6 @@
 # 依赖恢复为什么不是状态恢复
 
-在仓库根目录运行 `npm ci`，然后执行：
+在仓库根目录运行 `npm ci --ignore-scripts`，然后执行：
 
 ```bash
 node dependency-restart/run.mjs

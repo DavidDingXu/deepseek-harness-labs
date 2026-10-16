@@ -2,8 +2,8 @@
   name: '@deepseek-ai/dsh-agent-preset'
   config:
     id: review-config
-    name: 代码审查配置实验
-    description: 最小审查组合；Agent 创建时另施加继承工具过滤。
+    name: 只读审查
+    description: 审查项目文件；由配套过滤插件将继承工具限制为 read。
     plugins:
       - id: persona
         name: '@deepseek-ai/dsh-persona'

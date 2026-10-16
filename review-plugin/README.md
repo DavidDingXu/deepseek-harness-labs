@@ -5,7 +5,7 @@
 在仓库根目录运行：
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 node review-plugin/run.mjs
 ```
 
@@ -25,6 +25,12 @@ Official runtime 0.2.1-alpha.2; no model, Web, filesystem or persistence experim
 执行政策使用 scoped `tools.guard()`：它能拒绝同 scope 的工具，也不能被 `tools/pre-execute` 的 allow 覆盖。它不会隐藏模型看到的工具。`tools.restrict()` 仍可限制继承工具，但不能屏蔽同 scope 的工具注册；具体选择取决于挂载层级。
 
 当前 guard 仅匹配 `write`、`edit`。它不拦截 Shell、PTC 直接文件操作、外部进程或其他自定义写工具，不能充当文件系统只读沙箱。
+
+## 顺着一次调用看代码
+
+先看 [review-plugin.mjs](./review-plugin.mjs) 的 `apply()`：`register` 添加报告工具，`guard` 限制执行。再看 [run.mjs](./run.mjs) 如何派发调用并统计 body 次数。`runtime-fixture.mjs` 是装配代码，可以等看懂实验后再读。
+
+一个有用的改动是暂时把 Guard 匹配列表中的 `write` 去掉。重新运行时，拒绝写入的断言应失败，因为同 Scope 的 write 仍然存在，并且会执行。恢复后再运行通过。这个对照能看清：让模型看见工具和允许它执行，是两个独立决定。
 
 ## 可选的声明文件
 

@@ -36,6 +36,7 @@ export async function createHost(baseUrl, cwd, { preset = false } = {}) {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime, { mode: 'native' })
     if (preset) {
+      // 需要创建和绑定 Agent 的实验才增加这些服务；不在共享入口自动创建 Agent。
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(LocalFileSystem, { cwd })
@@ -50,7 +51,7 @@ export async function createHost(baseUrl, cwd, { preset = false } = {}) {
 }
 
 export async function mountFile(ctx, file, patches = []) {
-  // Use Loader entries so the Include instance owns the real subtree.
+  // 用真实 Loader Entry 挂载 Include，子树才能归属它，并随它一起退出。
   await ctx.loader.root.update([{ id: 'experiment', name: 'cordis:include', config: { path: pathToFileURL(file).href, patches } }])
   await ctx.loader.await()
   const entry = ctx.loader.resolve('experiment')
@@ -62,7 +63,8 @@ export async function mountFile(ctx, file, patches = []) {
     if (child.disabled) continue
     assert.ok(child.fiber, `${child.options.id} imported`)
     await child.fiber.await()
-    // Cordis FiberState.ACTIVE = 2; its const enum is erased in the JS export.
+    // “已无待处理任务”还不等于激活成功，必须逐项检查实际状态。
+    // FiberState.ACTIVE = 2；const enum 编译后不再提供运行时导出。
     assert.equal(child.fiber.state, 2, `${child.options.id} must be ACTIVE`)
   }
   return tree

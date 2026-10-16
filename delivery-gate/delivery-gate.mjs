@@ -32,6 +32,7 @@ const statusSchema = {
 }
 
 function normalizeCommand(value) {
+  // 只去首尾空白，保留命令内部及引号内字符串的原意。
   return value.trim()
 }
 
@@ -65,6 +66,7 @@ export function normalizeConfig(config = {}) {
 }
 
 export function createDeliveryState() {
+  // generation 是已观察变更的计数；不是磁盘内容版本或快照。
   return { generation: 0, evidence: new Map() }
 }
 
@@ -77,6 +79,7 @@ function matchingCheck(config, exec) {
 }
 
 function commandPassed(result) {
+  // 工具成功交回进程结果，进程仍可能失败。必须同时检查退出码、超时和取消。
   return result.isError === false
     && result.value?.kind === 'foreground'
     && result.value.exitCode === 0
@@ -95,6 +98,7 @@ export function observeToolResult(state, config, exec, result) {
   }
 
   if (mutationTools.has(exec.name) || shellTools.has(exec.name)) {
+    // 未匹配的 Shell 可能改文件；即便返回失败，也保守地让旧证据过期。
     state.generation += 1
   }
 }
@@ -103,6 +107,7 @@ export function deliveryStatus(state, config) {
   const checks = config.checks.map((check) => {
     const evidence = state.evidence.get(check.id)
     let status = 'missing'
+    // 先比较计数：上一次通过或失败的结果，都不能代表修改后的代码。
     if (evidence !== undefined && evidence.generation !== state.generation) status = 'stale'
     else if (evidence !== undefined && evidence.passed === false) status = 'failed'
     else if (evidence?.passed === true) status = 'passed'
@@ -129,10 +134,11 @@ export function apply(ctx, rawConfig = {}) {
   const config = normalizeConfig(rawConfig)
   const states = new WeakMap()
   const stateFor = agent => {
+    // 必须是 Registry 当前持有的同一个实例，不能仅凭相同 id 借用结果。
     if (agent === undefined || ctx.agents.get(agent.id) !== agent) return undefined
     let state = states.get(agent)
-    // A blank Web Agent can select this preset after its creation event.
-    // Begin with missing evidence, never reuse another Agent's checks.
+    // Web 可能先创建空白 Agent，再选中这个 Preset。首次使用时补建状态，
+    // 从缺少证据开始，不借用别的 Agent 或上一次挂载留下的检查。
     if (state === undefined) { state = createDeliveryState(); states.set(agent, state) }
     return state
   }
@@ -146,6 +152,7 @@ export function apply(ctx, rawConfig = {}) {
   })
 
   ctx.on('tools/result', (exec, result) => {
+    // 在结果事件处记录事实；模型声称“测试通过”不会进入这份证据表。
     const state = stateFor(exec.agent)
     if (state !== undefined) observeToolResult(state, config, exec, result)
   })
@@ -155,6 +162,7 @@ export function apply(ctx, rawConfig = {}) {
     const state = stateFor(exec.agent)
     if (state === undefined) return 'finish_delivery requires a live Agent owner'
     const decision = gateDecision(state, config)
+    // 本插件只提出拒绝；返回 undefined 不会越过其他 Guard 的限制。
     return decision.kind === 'deny' ? decision.reason : undefined
   })
 
