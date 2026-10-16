@@ -105,3 +105,5 @@ Cordis 是 DSH 管理插件、服务和生命周期的底层框架。实验固�
 | Web 中没有三个模式 | 按 Web 文档使用独立安装，检查准备脚本是否完成、启动时是否带上生成的 patch |
 
 本项目是独立学习实验，不是 DeepSeek 官方产品。官方实现通过锁定的 npm 依赖使用，各实验末尾提供需要进一步核对的源码入口。
+
+维护者：[DavidDingXu](https://github.com/DavidDingXu)。
