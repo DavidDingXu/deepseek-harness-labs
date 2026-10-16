@@ -1,45 +1,68 @@
-# 结构化审查与执行拒绝实验
+# 审查报告怎样交给程序，写操作怎样被拒绝
 
-固定使用官方 npm 包 `0.2.1-alpha.2` 与 Cordis `4.0.5-alpha.1`。源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。
+模型给出“需要修改”的结论后，后续程序还需要严重程度、文件和行号。这个插件增加 `review_report` 工具来接收固定字段，同时用 Guard 在执行前拒绝 write/edit。对应第 23 讲。
 
-在仓库根目录运行：
+完成[依赖安装](../README.md)后，在仓库根目录运行：
 
 ```sh
-npm ci --ignore-scripts
 node review-plugin/run.mjs
 ```
 
-不需要模型凭据。运行器组装官方 LLM、Session、Projection、SystemPrompt、Tools、Agent 与 AgentLoop，创建两个真实 Agent，直接调用官方 `ctx.tools.execute()`；不发模型请求，也不启动 Turn。`runtime-fixture.mjs` 只负责装配与调用，不实现替代 Harness。
+这个入口不请求模型。脚本创建两个真实 Agent，直接向官方工具运行时提交报告和写入调用，观察字段校验、执行限制及作用域隔离。
 
-实际输出（macOS，Node v24.14.1）：
+## 报告有数据值，也有给模型看的文本
+
+实验提交的报告如下。它是测试输入，并未声称模型实际发现了这个问题：
+
+```json
+{
+  "verdict": "needs_changes",
+  "summary": "Missing validation",
+  "findings": [
+    {
+      "severity": "high",
+      "file": "sum.mjs",
+      "line": 1,
+      "problem": "Input is not checked"
+    }
+  ]
+}
+```
+
+工具运行时校验字段，程序从结果的 value 读取这份对象；`output.render()` 再生成给模型看的简短文本。脚本分别检查两种结果，并提交非法 verdict，确认错误值被拒绝。字段合法仍不代表问题判断正确。
+
+## Guard 拦住的是哪个阶段
+
+write/edit 仍在这个 Agent 的可见工具表中。调用进入运行时后，Guard 在主体函数执行前拒绝它们。因此脚本同时检查：工具可见、调用被拒绝、主体执行次数为 0。
+
+写工具在这个离线实验里只增加计数，不写真实文件。另一个 Agent 的 write 可以执行；卸载插件后，审查 Agent 的 write 也恢复可执行，报告工具则被撤销。对应的关键输出是：
 
 ```text
 PASS review: schema validated; local write/edit denied before body; other Agent allowed; disposal restores write
-Official runtime 0.2.1-alpha.2; no model, Web, filesystem or persistence experiment.
 ```
 
-实验用计数工具模拟 `write`/`edit` body，确认同一个 Agent scope 内的写工具仍在 schema 中，但 guard 在 body 前拒绝调用；另一个 Agent 不受影响。它还检查 `review_report` 的规范返回值、渲染文本、非法 verdict 拒绝，以及插件卸载后报告工具撤销、写工具恢复。所有 Context 最后释放。
+即使 `tools/pre-execute` 监听器返回 allow，也不能越过 Guard 的拒绝。与上一讲的 restrict 相比，Guard 还能限制同一个作用域（Scope）中注册的工具；restrict 负责过滤继承工具的可见性。
 
-`review-plugin.mjs` 使用 `defineTool` 的属性 DSL 定义必填值，编译后交给真实 ToolRuntime。`ctx.tools.register()` 本身仍接受底层 JSON Schema，不能把两层声明形式混为一谈。报告的 schema 约束数据形状，不证明审查结论正确；“只调用一次”仍是提示约定，并没有计数门禁。
+当前 Guard 只匹配 write、edit 两个名字。Shell、直接文件操作和其他自定义写工具不在其范围内；需要文件系统隔离时，仍须合适的执行环境与政策。
 
-执行政策使用 scoped `tools.guard()`：它能拒绝同 scope 的工具，也不能被 `tools/pre-execute` 的 allow 覆盖。它不会隐藏模型看到的工具。`tools.restrict()` 仍可限制继承工具，但不能屏蔽同 scope 的工具注册；具体选择取决于挂载层级。
+## 先读哪段代码，改什么可以看到差异
 
-当前 guard 仅匹配 `write`、`edit`。它不拦截 Shell、PTC 直接文件操作、外部进程或其他自定义写工具，不能充当文件系统只读沙箱。
+先打开 [review-plugin.mjs](./review-plugin.mjs) 的 `apply()`：`register` 添加报告工具，`guard` 添加执行限制。再看 [run.mjs](./run.mjs) 中的工具调用和 writes 计数。[runtime-fixture.mjs](./runtime-fixture.mjs) 负责公共服务装配，需要时再读。
 
-## 顺着一次调用看代码
+暂时把 Guard 匹配列表中的 write 去掉，重新运行。写入拒绝的断言应失败，因为这个名称仍然可见，计数工具会执行。恢复后重新运行通过。
 
-先看 [review-plugin.mjs](./review-plugin.mjs) 的 `apply()`：`register` 添加报告工具，`guard` 限制执行。再看 [run.mjs](./run.mjs) 如何派发调用并统计 body 次数。`runtime-fixture.mjs` 是装配代码，可以等看懂实验后再读。
+如果准备修改报告字段，要区分两种声明：这里的 `defineTool` 使用属性 DSL，将 required 写在属性上；底层 `ctx.tools.register()` 接受 JSON Schema。复制字段定义时需遵循所在层的形式。提示词中的“只调用一次”也只是使用约定，插件没有给报告调用次数加锁。
 
-一个有用的改动是暂时把 Guard 匹配列表中的 `write` 去掉。重新运行时，拒绝写入的断言应失败，因为同 Scope 的 write 仍然存在，并且会执行。恢复后再运行通过。这个对照能看清：让模型看见工具和允许它执行，是两个独立决定。
+## 在 Web 中使用
 
-## 可选的声明文件
+跟随 [Web 实验](../web/README.md)可将它装进完整产品；本目录离线场景只检查工具管线，不启动模型 Turn、Web 或持久化。
 
-`preset.yml` 使用 `@deepseek-ai/dsh-agent-preset` 声明，persona 使用 `prefix`。声明必须被宿主显式 Include 才会加载。
-
-如需把文件复制到一个明确指定的独立目录：
+也可以手工复制。将示例路径替换为自己的独立目录，参数是目标目录，不含 YAML 文件名：
 
 ```sh
 node review-plugin/install.mjs /absolute/path/to/isolated-home
 ```
 
-安装器仅复制到该目录的 `column-plugins/review-plugin`，拒绝覆盖不同内容，不修改默认 profile。随后需在完整发行版组合中显式包含打印出的 `preset.yml`，并满足文件工具的能力依赖；完整接入见 [Web 实验](../web/README.md)。`read_image` 是否注册还取决于 attachments 服务，不能给出无条件固定工具列表。
+文件会复制到该目录下的 column-plugins/review-plugin，安装器拒绝覆盖不同内容。宿主须显式加载输出的 preset.yml，并提供文件工具需要的服务。是否出现 read_image 还取决于附件存储是否存在。
+
+实验固定使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。

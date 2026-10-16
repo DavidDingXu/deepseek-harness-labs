@@ -1,103 +1,53 @@
-# 真实 AgentLoop：从工具调用到有序提交
+# 从一次工具往返，看清循环、重试、取消和提交
 
-本实验使用官方 npm 发布的 Harness Runtime。脚本只替换 LLM adapter 的响应与演示工具，不实现另一套 AgentLoop、Session、Tool Registry 或并行调度器。
+第一次响应要求调用 sum，工具算出 42，下一次请求应收到这个结果。先沿这条小路径跑通，再看响应失败、取消和两个工具并发时，运行时如何处理。
 
-第 01 讲可以先跑 `basic`，认识一次工具往返；第 20 讲再用它核对请求、调用身份和会话记录。第 21 讲使用 `order` 观察并发中的中间状态。`retry`、`cancel` 分别对照同一 Step 内的重试，以及取消后的流结算；`recovery` 对照第 16 讲的内存恢复算法。
+模型响应由 `ScriptedAdapter` 预先设定；AgentLoop、工具管线、会话和调度使用官方实现。这样可以把每个条件固定下来，检查请求之间真正传了什么。对应第 01、15、16、20、21 讲。
 
-## 运行
+## 先运行 basic
 
-在 `deepseek-harness-labs` 仓库根目录，使用 Node.js `^22.19.0 || >=24.0.0`：
-
-```sh
-npm ci --ignore-scripts
-node runtime/run.mjs --scenario basic
-```
-
-只运行一项：
-
-```sh
-npm run basic --workspace deepseek-harness-runtime-lab
-npm run order --workspace deepseek-harness-runtime-lab
-npm run retry --workspace deepseek-harness-runtime-lab
-npm run cancel --workspace deepseek-harness-runtime-lab
-npm run recovery --workspace deepseek-harness-runtime-lab
-```
-
-也可以使用统一入口：
+完成[根目录依赖安装](../README.md)后，在仓库根目录执行：
 
 ```sh
 node runtime/run.mjs --scenario basic
-node runtime/run.mjs --scenario order
-node runtime/run.mjs --scenario retry
-node runtime/run.mjs --scenario cancel
-node runtime/run.mjs --scenario recovery
-node runtime/run.mjs --scenario all
 ```
 
-无参数等同 `all`。命令不依赖 Bash、Unix 路径或环境变量赋值，适用于 macOS、Windows 与 Linux 的 Node 环境。本地执行环境为 macOS、Node v24.14.1、npm 11.11.0；2026-10-11 的 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/runs/38140245718) 另在 Ubuntu、macOS、Windows 上运行全部离线实验通过。
-
-下载依赖时需要访问 npm registry；运行实验不连接模型，不需要模型凭据，也不读取或修改默认 profile。实验只使用内存 Session，不安装文件、进程或沙箱 Provider，不写持久化文件，也不创建临时目录。每项实验都在 `finally` 中等待 Context 退出。
-
-## 运行的是哪个实现
-
-[package.json](./package.json) 精确声明 Cordis `4.0.5-alpha.1` 与 DSH `0.2.1-alpha.2`，统一的 [package-lock.json](../package-lock.json) 锁定完整依赖图和 npm tarball integrity。四个 Cordis 机制实验与本实验共享同一版本的 Cordis，依赖由 npm workspace 管理；没有使用 `--legacy-peer-deps` 忽略冲突。
-
-`run.mjs` 启动时读取已安装包的 package.json，逐项检查直接依赖版本；偏离固定版本即失败。`dsh-session-persistence` 等包满足官方 peer 合同，但本实验没有挂载持久化 backend。
-
-源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。该源码的根包版本为 `0.2.1-alpha.2`，vendor/cordis 为 `4.0.5-alpha.1`。实验执行官方 npm 发布的 JavaScript 产物，链接中的 TypeScript 用于阅读实现。
-
-服务装配与官方 [agent-loop tests](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/tests/agent.spec.ts#L24) 对应：
+输出应包含：
 
 ```text
-LlmRuntime
-SessionStore
-SessionProjectionRegistry
-SystemPrompt
-ToolRuntime（native）
-AgentRegistry
-AgentLoop（不自动创建 Agent，并发上限 2）
+PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assistant/attempt=0
 ```
 
-最后注册 `ScriptedAdapter`，再 await `ctx.agentLoop.create()`。SessionProjectionRegistry 负责把事件派生成可读状态；创建 Agent 是异步操作，要等待它就绪后再发送输入。
+这行有三层计数：Turn 是这次输入驱动的工作轮次；Step 是循环中的一个推进步骤；Attempt 是一次具体的模型请求尝试。本场景第一步取得并执行工具调用，第二步生成答案，因此一次 Turn 包含两个 Step。每一步都一次请求成功；重试场景则会让同一个 Step 出现多次 Attempt。
 
-## 代码阅读顺序
+## basic：结果有没有真正进入下一次请求
 
-先打开 [run.mjs](./run.mjs) 中的场景函数，输入、操作和断言放在同一个函数里：
+打开 [run.mjs](./run.mjs) 的 `normalTurn()`。预定响应分两次提供：
 
-| 场景 | 函数 | 第一次阅读抓住什么 |
-| --- | --- | --- |
-| basic | `normalTurn()` | 第一次返回工具调用，第二次先检查请求中的工具结果 |
-| order | `parallelOrder()` | 先暂停 A，再放行 B；B 已完成时，结果还没提交 |
-| retry | `retryAttempt()` | 哪一层给出重试决定，两次请求是否使用同一份用户输入 |
-| cancel | `cancelledStream()` | 实时前缀已出现，但 Session 尚无结算消息；取消后再检查日志 |
-| recovery | `recoveryAlgorithm()` | 有无 tool/call 这一处差异，怎样改变缺失结果的解释 |
+1. 第一次提出 `sum(19, 23)`。运行时派发工具，执行主体返回数值 42，render 将它转换成模型可见的文本。
+2. 第二次先查看运行时构造的请求，确认其中有对应 `sum-1` 的工具结果、内容为 42，再生成最终回答。
 
-随后再看 `mount()` 的服务装配与 `observe()` 的观察点。`ScriptedAdapter` 只提供可控的响应；`assertSettlements()` 同时检查 Session 接纳和实时流结束的先后关系。
+脚本还检查工具只执行一次、Session 记录的结果也是 42。请求交接和会话记录分别检查，因此最终答案中出现 42 还不够。
 
-## 第 20 讲：basic 验证一次真实工具往返
+这里 Session 是保存运行事件的会话对象。工具调用记录为 tool/call，结果记录为 tool/result。模型响应结束时，成功内容形成 assistant/message；失败尝试会在后面的 retry 场景中另作记录。
 
-脚本 adapter 的第一次响应包含 `sum(19, 23)` 工具调用。真正执行的 `sum` body 通过 `defineTool` 注册，规范输出为 number，render 将其变成模型可见的文本 `42`。
+可以按以下步骤改一次输入：
 
-AgentLoop 派发这个工具，再构造第二次请求。第二次 adapter 不直接返回预先写好的“成功”：它先断言真实请求的 tool 消息存在且内容为 `42`，再把这份结果写进答案。这个检查证明工具结果已经进入下一次请求，不证明脚本 adapter 拥有语言理解能力。
+1. 将 `b: 23` 改成 `b: 24`，不改预期。第二次请求的结果检查应失败：实际是 43，预期还是 42。
+2. 只将第二次响应函数内的结果预期改成 `'43'`。这次会通过请求检查，再在 Session 结果仍预期 `'42'` 的地方失败。
+3. 将 Session 的预期也改成 `'43'`，应重新通过。工具仍只执行一次，请求仍只有两次。
 
-断言覆盖：
+练习后恢复这些改动，再继续其他场景。
 
-- body 只调用一次，结果确实为 42。
-- 一次 Turn 包含两次 Step，两次模型请求各产生一条 assistant/message。
-- tool/result 进入 Session，并出现在下一次请求中。
-- 没有 assistant/attempt，也没有逐条 assistant/chunk Session 事件。
-- 每次 live end frame 都指向已有的结算事件；Session commit 在 live end 之前。
-- 每个结算事件内嵌非空 compact stream。
+## order：B 已完成，为什么还没有结果提交
 
-可以在自己的实验副本中改一个条件：在 `normalTurn` 把 `b: 23` 改成 `b: 24`，把第二次 adapter 响应中 `textOf(result)` 的预期改为 `'43'`，暂时保留 Session 结果的 `'42'`。运行 basic 会在 Session 断言失败；再把该预期改为 `'43'` 后应通过。主体仍执行一次、模型仍请求两次。两处检查分别观察请求交接和会话记录，不能只改最终答案文本。恢复原值后再运行完整检查。
+```sh
+node runtime/run.mjs --scenario order
+```
 
-## 第 21 讲：order 验证 B 先完成，A 先提交
+`parallelOrder()` 让模型按 A、B 的顺序提出两个并发安全工具调用。两者各自等待脚本放行。先确认都已启动，再只放行 B，让 A 继续等待。
 
-adapter 一次请求两个并发安全工具，模型顺序是 A、B。每个工具都等到脚本显式放行才返回，因此可以指定谁先完成，不用“睡眠 100ms”猜测调度顺序。
-
-实验等到 A、B 都启动，先释放 B。B 的 body 完成后，再让一次事件循环中的后续处理运行，A 仍然等待。此时断言 `tools/result` 与 Session `tool/result` 都还没有出现，再释放 A。
-
-最终断言三条序列：
+B 的主体返回后，脚本让一次事件循环中的后续处理运行，然后检查两个位置：`tools/result` 结果事件尚未出现，Session 中也没有 tool/result。之后才放行 A，最终应得到：
 
 ```text
 body completion:     B, A
@@ -105,51 +55,72 @@ tools/result:        A, B
 Session tool/result: A, B
 ```
 
-这验证真实 body 并发及提交顺序的差异。实验不通过伪造日志或手动排序结果实现 A、B；顺序来自官方 AgentLoop 调度器。
+执行先后和结果提交先后是分开的。上述中间检查能排除“最后才把结果数组排了一遍序”的误解：B 在 A 未完成时就已经返回，但结果仍等在原来的提交位置。
 
-`setImmediate` 只提供一次事件循环检查点，让 B 的 Promise 后续处理运行；它没有时间阈值，也不决定谁先完成。15 秒 watchdog 仅用于发现挂起的实验并以非零退出，不参与正常顺序。
+`setImmediate` 提供观察后续处理的机会，不决定谁先完成。15 秒超时仅用于让挂起的实验报错。如果把 `mount()` 中 `maxParallelToolCalls: 2` 改为 1，A 会占住唯一执行位置，B 无法启动；实验停在 bothStarted，直到超时失败。恢复为 2 后再运行。
 
-另一个可控反例：把 `mount` 里的 `maxParallelToolCalls: 2` 改成 1。A 暂停后占住唯一执行位置，B 无法启动，实验停在 `bothStarted`，15 秒后以非零状态结束。恢复为 2 后，原顺序检查才能完成。这个对照用于确认实际并发，不是通过调整等待时间制造成功。
+## retry：同一步可以请求两次，输入仍只有一份
 
-## retry 与 cancel 验证什么
-
-`retry` 第一次返回受控的 `SERVER_ERROR` finish。实验注册一个 `agent/request-error` middleware，仅允许一次重试。第二次成功后，断言同一 Turn、同一 Step 中有两次请求，一条 assistant/attempt、一条 assistant/message；派生 surface 只有成功的 assistant 消息。另断言 user/message 只接纳一次，两次请求中的用户消息完全相同，防止把请求重试误写成重新投递输入。重试政策是实验插件给出的，不应称为 AgentLoop 默认自动重试所有失败。
-
-`cancel` 先发出可见前缀 `Visible prefix`，然后等待 abort。取消之前断言 Session 尚无 assistant/message；调用真实 `agent.cancel({ kind: 'user' })` 并等待 idle 后，断言前缀被保存为 `interrupted: true` 的 assistant/message，Turn 为 aborted，Step 正常闭合。它没有假装未完成文本是完整成功答案。
-
-两个实验分别说明：失败尝试不一定进入模型 surface；取消已经展示的内容，也不等于将这段事实从历史中抹掉。
-
-## recovery 验证两类缺失结果
-
-这项不运行 adapter，也不伪造 Harness：使用官方 `Session.create` 和 `Session.append` 分别构造两个有效的开放尾部，区别只有是否存在 `tool/call`。然后把真实日志交给官方导出的 `ToolCallRecovery` 与 `interruptedTurnClosers`。
-
-- assistant/message 已含 tool-call，但无 tool/call：错误码为 `TOOL_NOT_STARTED`。
-- 已有 tool/call，但无 tool/result：错误码为 `TOOL_OUTCOME_UNKNOWN`，结果来源引用已有的 call seq。
-
-断言两条路径都产生 `tool/result → step/end → turn/end`，序号连续，结束原因为 interrupted。计算修复候选不会改变 Session；将候选通过 Session.append 接纳后，原始前缀保持不变，派生消息含错误结果，再次修复返回空。
-
-这里没有调用 `demo_write` 的 body，也没有写入真实文件。它证明算法如何解释记录缺口，不证明外部操作究竟有没有执行；尤其不能从 UNKNOWN 推导出“可以放心重试写入”。没有创建、终止或重启子进程。
-
-## 实际输出
-
-2026-10-11 在上述环境由根目录实验检查器运行本脚本，退出码 0。下面是实际程序输出，不含 npm 自己打印的脚本标题：
-
-```text
-Runtime: dsh 0.2.1-alpha.2; Cordis 4.0.5-alpha.1; official npm packages
-PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assistant/attempt=0
-  log: agent/inbox/spliced -> turn/start -> agent/inbox/spliced -> step/start -> system/message -> user/message -> request/header -> request/context -> assistant/message -> tool/call -> tool/result -> step/end -> step/start -> assistant/message -> step/end -> turn/end
-  live: start/chunk/end; each end follows its Session commit; Session assistant/chunk=0
-PASS retry: turns=1, steps=1, requests=2, accepted inputs=1, identical retry input, assistant/attempt=1, surface assistant messages=1
-PASS parallel: body completion=B,A; tools/result=A,B; Session tool/result=A,B
-PASS cancel: interrupted=true, text="Visible prefix", turn=aborted, step closed
-PASS recovery: no call=TOOL_NOT_STARTED; call without result=TOOL_OUTCOME_UNKNOWN
-  closers: tool/result -> step/end -> turn/end; second repair=0; in-memory algorithm only
-All 5 experiments passed; every Context disposed; no profile or persistence files written.
+```sh
+node runtime/run.mjs --scenario retry
 ```
 
-`PASS normal` 对应 `basic`；`PASS parallel` 对应 `order`。日志里的额外 inbox、request/header、request/context 事件是真实 Runtime 输出；实验没有把旧版本的固定事件数量当作新版本合同。
+第一次响应返回 SERVER_ERROR，实验通过 `agent/request-error` 给出一次重试决定，第二次成功。
 
-## 沿源码核对
+检查结果是 1 个 Turn、1 个 Step、2 次请求；两次请求中的用户输入相同，Session 中也只有一份 user/message。失败尝试记为 assistant/attempt，成功结果记为 assistant/message；下一次给模型使用的历史只包含成功的 assistant 消息。
+
+先读 `retryAttempt()` 中给出重试决定的监听器，再看请求输入与事件计数的断言。这项重试由实验明确配置，不能推广为运行时默认重试所有错误。
+
+## cancel：已显示的前缀怎样留下来
+
+```sh
+node runtime/run.mjs --scenario cancel
+```
+
+`cancelledStream()` 先发出 `Visible prefix`，然后等待取消信号。取消前，这段实时内容已经发出，Session 尚无最终的 assistant/message。
+
+调用真实的 `agent.cancel({ kind: 'user' })`、等待运行空闲后，前缀成为带 `interrupted: true` 的 assistant/message，Step 关闭，Turn 以 aborted 结束。未写完的内容保留下来，并带着中断状态。
+
+`observe()` 同时记录实时流结束和 Session 接纳事件；`assertSettlements()` 检查每个实时结束帧指向已接纳的结算事件。这些接纳发生在内存中，落盘是另外的步骤。
+
+## recovery：未启动与结果未知怎样区分
+
+```sh
+node runtime/run.mjs --scenario recovery
+```
+
+这个场景使用官方 Session 接口构造两份未结束的内存日志，再交给 `ToolCallRecovery` 和 `interruptedTurnClosers`。两份输入只差一个 tool/call：
+
+| 日志里有什么 | 恢复结果 | 可以据此判断什么 |
+| --- | --- | --- |
+| assistant 已提出 tool-call，但没有 tool/call | TOOL_NOT_STARTED | 没有工具启动记录 |
+| 已有 tool/call，但没有 tool/result | TOOL_OUTCOME_UNKNOWN | 已记录启动，缺少结果，不能确认外部动作是否完成 |
+
+两条路径都补上 tool/result、step/end、turn/end，原日志前缀保持不变。计算修复候选时不改 Session；通过 append 接纳后，再次计算返回空，避免重复修复。
+
+打开 `recoveryAlgorithm()` 看两组输入。它没有真正执行 demo_write，也没有终止或重启进程，所以 UNKNOWN 不能作为放心重试写入的依据。
+
+## 一次运行全部场景
+
+```sh
+node runtime/run.mjs
+```
+
+无参数等同 `--scenario all`，依次运行上述五项。`PASS normal` 对应 basic，`PASS parallel` 对应 order。若要使用 npm workspace 别名，可查看 [package.json](./package.json) 的 scripts。
+
+每项都在 finally 中释放 Context。它们不请求远程模型、不读取默认 Profile，使用内存 Session；没有安装持久化、文件、进程或沙箱实现。想接真实模型，继续看[真实模型实验](../real-model/README.md)。
+
+## 需要修改装配时再看这里
+
+`mount()` 装配 LlmRuntime、SessionStore、SessionProjectionRegistry、SystemPrompt、ToolRuntime、AgentRegistry 和 AgentLoop，最后注册脚本响应适配器。AgentLoop 使用 native 工具模式，并发上限为 2，不自动创建 Agent；每个场景自己 await 创建完成后再发送输入。
+
+SessionProjectionRegistry 根据会话事件更新已注册的投影状态，供其他组件读取。它与 Session、工具运行时一样使用官方包。
+
+[package.json](./package.json) 固定 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，完整依赖由根目录 lockfile 管理，脚本启动时逐项检查直接依赖版本。支持的 Node.js 版本见[仓库首页](../README.md)。npm 执行的是发布的 JavaScript，下面的 TypeScript 链接便于核对实现。
+
+本实验中的 Session 接纳不等于磁盘 fsync，取消也不等于进程崩溃；JSONL 保存、损坏文件修复、跨进程恢复和完整产品应分别验证。
+
+## 可选源码对照
 
 | 实验观察 | 当前官方实现 |
 | --- | --- |
@@ -161,10 +132,4 @@ All 5 experiments passed; every Context disposed; no profile or persistence file
 | 失败 attempt 不成为 surface 消息 | [SessionEventMap:341](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/types.ts#L341)、[deriveMessages:984](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/index.ts#L984) |
 | 恢复候选与开放尾部闭合 | [ToolCallRecovery:118](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/repair.ts#L118)、[openTurnClosers:53](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/repair.ts#L53) |
 
-教学形式参考 [Cookbook 第13章](https://github.com/zhangjessey/deepseek-harness-cookbook/blob/2b9d4d97f947017433bfd11dbc0ea601de7f28ca/src/ch13/agent-loop-demo.ts) 的脚本 adapter，以及官方 MockAdapter/调度测试的可控输入思路。本实验针对当前版本另写，未直接运行 Cookbook 的旧版代码，也未复制它的旧事件计数。
-
-## 证据边界
-
-这里的 commit 是内存 Session 接纳事件，不是磁盘 fsync。没有挂载 JSONL backend，因此本实验不验证断电恢复、损坏文件修复或跨进程持久化；取消对照也不是杀死进程的崩溃实验。
-
-它验证的是真实运行时在受控输入下的协议、调度与投影。它不验证模型智能、线上 Provider、PTC、文件沙箱或产品 UI。运行依赖可由锁文件重新安装，`node_modules/` 不属于需要打包的实验源码。
+脚本响应的组织形式参考 [Cookbook 第13章](https://github.com/zhangjessey/deepseek-harness-cookbook/blob/2b9d4d97f947017433bfd11dbc0ea601de7f28ca/src/ch13/agent-loop-demo.ts) 的脚本 adapter，以及官方 MockAdapter/调度测试的可控输入思路。本实验依照上述固定版本独立编写。

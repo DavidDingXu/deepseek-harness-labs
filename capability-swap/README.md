@@ -1,27 +1,28 @@
-# 文件工具不改，只换文件能力的实现
+# 同一个 write，换了文件实现为什么结果不同
 
-同一条 `write` 请求，在本地文件实现下成功，换成只读文件实现后被拒绝，再换回本地实现又成功。实验使用官方 `dsh-tool-fs` 工具，调用者没有为两个 Provider 分别写一套工具。
+写入 `report.txt` 的工具调用保持不变：本地文件实现下成功，换成受限文件实现后被拒绝，再换回本地实现又成功。第 11 讲讨论的“能力可替换”，在这里可以直接看到结果。
 
-在仓库根目录执行：
+完成[依赖安装](../README.md)后，在仓库根目录执行：
 
 ```sh
-npm ci --ignore-scripts
 node capability-swap/run.mjs
 ```
 
-依赖沿用 `preset-runtime` workspace，固定 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，运行前逐项核对版本。Node.js 要求 `^22.19.0 || >=24.0.0`。
+这个实验不请求模型，文件只写入脚本创建的临时目录。
 
-## 看哪三个角色
+## 先分清工具与文件实现
 
-| 角色 | 本实验中的真实实现 |
-| --- | --- |
-| Definition：文件操作的共同约定 | `dsh-fs` 的 `FileSystem`，以 `ctx.fs` 提供服务 |
-| Consumer：处理模型参数与结果 | `dsh-tool-fs` 的官方 `write` 工具 |
-| Provider：完成文件操作 | 先用 `dsh-fs-local`，再用 `dsh-fs-sandbox`，最后换回本地实现 |
+模型调用的是 `write` 工具，真正操作文件的是工具背后的文件服务。实验把两者分开装配：
 
-三次装配都在同一个 Host 中完成，文件工具只挂载一次。两个 Provider 都注册同名服务，所以必须先卸载旧实现，再挂新实现。工具依赖 `fs`：服务撤销时，Cordis 撤销它注册的工具；新实现就绪后，Cordis 重新激活同一个消费者插件。
+| 角色 | 做什么 | 本实验中的实现 |
+| --- | --- | --- |
+| Definition，共同约定 | 规定文件服务能做哪些操作 | dsh-fs 的 FileSystem 服务，通过 ctx.fs 访问 |
+| Consumer，能力使用方 | 解析工具参数，再调用文件服务 | 官方 dsh-tool-fs 的 write 工具 |
+| Provider，能力提供方 | 实际完成或拒绝文件操作 | 先 fs-local，再 fs-sandbox，最后换回 fs-local |
 
-每次调用保持工具名和参数不变，仅为新的调用生成不同的追踪编号：
+文件工具只挂载一次。每次更换 Provider，先卸载旧服务，再挂载新服务，避免同名服务冲突。Cordis 根据工具声明的 fs 依赖撤销或重新激活工具。
+
+每次请求的核心参数相同，只更换追踪调用用的编号：
 
 ```json
 {
@@ -33,42 +34,32 @@ node capability-swap/run.mjs
 }
 ```
 
-## 政策不变，为什么结果会变
+## 跟着四个阶段看结果
 
-Host 从开始就挂载 `sandboxPolicy`，配置始终是 `read-only`。本地 Provider 不执行这项写入约束，因此第一次写入成功。受限 Provider 会读取本次调用的政策并拒绝写入。政策表达要求，Provider 负责兑现；仅安装政策服务，不会自动限制所有文件操作。
-
-| 阶段 | 工具层观察 | 磁盘断言 |
+| 阶段 | 工具结果 | 脚本检查的磁盘状态 |
 | --- | --- | --- |
-| 本地 Provider | write 成功 | 文件内容等于请求内容 |
-| 卸载本地 Provider | write 从注册表消失，直接调用返回 `UNKNOWN_TOOL` | 已有内容不变 |
-| 挂载只读 Provider | 同一 write 返回 `FS_SANDBOX_DENIED` | 新文件未创建，已有文件未覆盖 |
-| 换回本地 Provider | 同一 write 再次成功 | 已有文件更新成请求内容 |
+| fs-local 在场 | write 成功 | 内容等于请求内容 |
+| 卸载 fs-local，fs 尚未恢复 | UNKNOWN_TOOL | 工具已撤销，原内容不变 |
+| fs-sandbox 在场 | FS_SANDBOX_DENIED | 既不能新建，也不能覆盖已有文件 |
+| 换回 fs-local | write 再次成功 | 内容更新成请求内容 |
 
-拒绝阶段做两次检查。脚本先删除上一阶段的测试文件，验证同一请求不能创建文件；再由测试代码放入一份不同的既有内容，验证同一请求不能覆盖它。这样即便错误处理出现“返回拒绝、实际上已经写入”的问题，磁盘断言也会失败。
+输出依次出现 `PASS local`、`PASS dependency`、`PASS replacement`、`PASS restoration`。打开 [run.mjs](./run.mjs)，沿这四处输出向上找对应的挂载、卸载和断言即可。
 
-消费者的实现与基础写入参数保持不变，但重新激活时可以根据 Provider 的能力调整描述：例如受限实现下，官方工具会额外公布提权参数。本实验不传这些参数，不发起审批。
+拒绝阶段检查了两种情况：先删除文件，确认写调用不能重新创建它；再由实验代码放入另一份内容，确认写调用不能覆盖它。除了错误码，磁盘也要符合拒绝结果。
 
-2026-10-13，在 macOS / Node.js v24.14.1 上执行通过：
+## 为什么 read-only 政策一开始就在，第一次仍能写入
 
-```text
-PASS local: official write creates report.txt; fs-local does not enforce the read-only policy
-PASS dependency: removing fs-local revokes write; a direct call returns UNKNOWN_TOOL
-PASS replacement: the same write returns FS_SANDBOX_DENIED; creation and overwrite leave disk unchanged
-PASS restoration: fs-local reactivates the same consumer; the same write succeeds again
-PASS cleanup: official runtime disposed; temporary files removed; no model or OS sandbox used
-```
+运行环境从开始就提供 `sandboxPolicy`，值始终是 read-only。fs-local 不执行这项政策检查，所以第一次写入成功；fs-sandbox 在文件操作入口读取并执行政策，所以相同调用被拒绝。
 
-脚本使用 Node.js 的临时目录与路径 API，没有平台专用命令；上述记录仅代表本轮 macOS 实测，Windows 与 Linux 结果需由对应平台运行确认。
+政策表达要求，具体 Provider 负责兑现。要限制某条文件路径，必须检查调用实际经过哪一个实现。仅挂载政策服务不能自动限制任意代码。
 
-## 这次替换说明了什么
+工具重新激活时，可以根据当前实现的能力调整说明。例如受限实现下会出现提权参数，但本实验不传这些参数，也不发起审批。
 
-可替换性既包括方法约定，也包括服务的寿命与错误传播。消费者不必识别具体实现名称，却仍然需要把实现返回的拒绝交给调用方。依赖暂时不存在时，工具撤销；依赖回来后，工具重新可用。
+这里的 fs-sandbox 在文件服务入口做检查，没有建立操作系统沙箱；绕开服务的 Node 文件操作仍不受它控制。实验也没有迁移到远程工作区。它使用官方工具注册表和文件工具，验证服务替换、依赖撤销与错误传播。
 
-这里调用真实 ToolRegistry 和真实文件工具，但不启动 Agent Loop 或请求模型。`fs-sandbox` 在文件能力入口执行可信代码中的政策检查，没有创建进程或操作系统沙箱；它也不能约束绕过该服务的任意 Node 文件操作。实验验证的是两种本地文件 Provider 的替换，不是远程工作区迁移。
+脚本使用锁定的 DSH `0.2.1-alpha.2`，复用 [Preset 共享环境](../preset-runtime/README.md)。退出时卸载运行环境、恢复原 DSH_HOME 并删除临时文件。三平台运行结果见[自动检查](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)。
 
-所有文件写入独立临时目录，`DSH_HOME` 也只在本次进程中指向该目录。结束时卸载 Host、恢复环境变量并删除临时文件，不修改默认 Profile。
-
-对应源码（可选，链接指向实验使用的固定版本）：
+## 可选源码对照
 
 - [文件能力约定](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/fs/src/index.ts)：消费者共同依赖的 `FileSystem` 服务。
 - [受限文件 Provider](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/fs-sandbox/src/index.ts)：替代本地实现注册 `ctx.fs`，在变更前执行政策检查。

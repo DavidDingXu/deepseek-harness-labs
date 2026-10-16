@@ -1,27 +1,30 @@
-# 真实模型：从网关请求到工具结果回传
+# 换成真实模型以后，工具往返还能接上吗
 
-这个实验把第 20 讲的脚本响应换成官方 `@deepseek-ai/dsh-llm-pi-ai`，仍由真实 AgentLoop、Tool Runtime、Session 和 Preset Registry 执行。默认离线测试不运行本目录；本实验会调用你指定的模型服务并产生用量。
+[离线工具实验](../runtime/README.md)已经固定了输入和预期。这里把预定响应换成真实模型，通过官方 llm-pi-ai 适配器请求服务，再由官方 AgentLoop、工具运行时与会话完成后续流程。
+
+这个入口会使用你配置的模型额度。建议先运行 tool 场景，再选择其他项；根目录的 npm test 不会触发本实验。
 
 ## 接入配置
 
-在仓库根目录安装统一依赖：`npm ci --ignore-scripts`。向启动进程提供以下环境变量，凭据值不要写进源码、YAML 或运行记录：
+先完成[仓库依赖安装](../README.md)。接下来只设置当前终端的连接参数，尚不发起请求：
 
-| 变量 | 用途 |
+| 环境变量 | 填什么 |
 | --- | --- |
-| `OPENAI_API_KEY` | 当前进程使用的模型凭据 |
-| `OPENAI_BASE_URL` | 自己授权使用的 HTTPS 网关地址，包含所需 `/v1` 路径 |
-| `DSH_LIVE_MODEL` | 明确指定模型；本次实测为 `gpt-6-luna` |
-| `DSH_LIVE_API` | 默认 `openai-responses`；也接受 `openai-completions`，但必须由服务端实际支持 |
+| OPENAI_API_KEY | 模型服务的凭据 |
+| OPENAI_BASE_URL | 该服务的 HTTPS 接口地址，包含它要求的 /v1 路径 |
+| DSH_LIVE_MODEL | 服务实际支持的模型名；已有实测使用 gpt-6-luna |
+| DSH_LIVE_API | 请求协议；下例明确使用 openai-responses |
 
-macOS 的 zsh 可以隐式读取输入，避免把凭据值放进命令历史：
+将示例中的网关地址换成自己的地址，再选择与你的终端对应的一段。凭据通过隐藏输入读取，不写进代码或配置文件。
+
+macOS / zsh：
 
 ```sh
 read -rs 'OPENAI_API_KEY?模型凭据：'
 export OPENAI_API_KEY
 export OPENAI_BASE_URL='https://你的兼容网关/v1'
 export DSH_LIVE_MODEL='gpt-6-luna'
-node real-model/run.mjs all
-unset OPENAI_API_KEY
+export DSH_LIVE_API='openai-responses'
 ```
 
 Windows PowerShell 7：
@@ -30,31 +33,43 @@ Windows PowerShell 7：
 $env:OPENAI_API_KEY = Read-Host '模型凭据' -MaskInput
 $env:OPENAI_BASE_URL = 'https://你的兼容网关/v1'
 $env:DSH_LIVE_MODEL = 'gpt-6-luna'
-try { node real-model/run.mjs all } finally { Remove-Item Env:OPENAI_API_KEY }
+$env:DSH_LIVE_API = 'openai-responses'
 ```
 
-也可用 `npm run test:live` 运行全部，或 `node real-model/run.mjs tool` / `preset` / `review` / `delivery` 运行一项。已实测 macOS；提供 PowerShell 用法不等于完成 Windows 实测。
+这组环境变量只对当前终端及其启动的进程有效。若另开终端，需要重新提供。Windows 的用法不代表真实模型场景已在 Windows 实测；已有集成记录来自 macOS。
 
-## 为什么协议必须明确
+## 先运行一次工具往返
 
-`baseURL` 只指定网络地址，`api` 才指定线上消息协议。当前 `dsh-llm-deepseek` 使用 DeepSeek Messages；把兼容网关地址填到它上面，并不会自动变成 OpenAI Responses。这里挂载官方 `llm-pi-ai`，创建独立的 `course-live` 路由，指定协议与模型列表，再把 Agent 的 provider/model 指向它。
+在同一个终端、仓库根目录运行：
 
-本实验将 contextWindow=32768 和 maxTokens=2048 作为保守的运行限制，不将它们当成网关或模型的真实容量声明。配置只保存环境变量名；凭据由官方适配器在请求时解析。工具启动的子进程不继承模型凭据。
+```sh
+node real-model/run.mjs tool
+```
 
-## 四项验证
+脚本要求模型调用 sum(19, 23)，检查工具返回 42，并核对后续实际发出的 HTTP 请求包含工具结果。它还检查最终回答含 42。只有这些条件都满足，才会出现 PASS tool。
 
-| 场景 | 保留的真实实现 | 检查结果 |
+若想继续，替换命令最后的场景名即可：
+
+| 场景名 | 操作 | 重点观察 |
 | --- | --- | --- |
-| tool | 官方适配器、Loop、工具管线、Session | 模型调用 sum(19,23)，工具返回 42，后续线上请求包含工具输出，最终回答含 42 |
-| preset | 官方 Loader → 声明式 Preset → Agent → tool-fs | 模型只看见 read；真实读取临时文件中的标记，文件保持不变 |
-| review | 第 23 讲插件、官方工具管线与模型 Turn | 模型发出的 write 被 Guard 拒绝，body 次数为 0；读取有缺陷的 fixture 后提交合法结构化报告 |
-| delivery | 第 24 讲插件、官方工具管线与模型 Turn | 模型按提示发起缺证据交付、失败检查、修复、成功检查、交付、再次修改、再次交付；检查拒绝/允许/拒绝 |
+| tool | 一次求和往返 | 工具输出确实进入下一次线上请求 |
+| preset | 模型读取临时文件 | 请求中只开放 read，返回文件中的标记，内容不变 |
+| review | 尝试写入，再提交结构化审查 | write 被 Guard 拒绝、主体执行 0 次，报告字段合法 |
+| delivery | 缺证据交付、失败检查、修复、通过、再次修改 | finish_delivery 依次被拒绝、允许、再次拒绝 |
 
-review 的 write 只计数；delivery 的 bash 是仅接受 `node --test`、`git diff --check` 的教学执行器，实际启动这两个子进程，write 只写临时 sum.mjs。它们不是完整 Shell 插件或操作系统沙箱。Preset 场景使用的是官方 tool-fs。
+运行全部使用 `node real-model/run.mjs all` 或 `npm run test:live`。每项在自己的临时目录中运行，结束后清理并恢复 DSH_HOME。
 
-## 已实测结果
+## 地址和协议为什么要分别配置
 
-2026-10-10，DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`、`gpt-6-luna`、Responses 协议。四个独立 Turn 共 17 次 HTTP 请求；每次响应为 200，失败 attempt 为 0。
+baseURL 决定请求发到哪里，api 决定消息按什么协议发送。地址兼容不代表所有消息协议都兼容。
+
+本实验通过官方 llm-pi-ai 配置独立路由 course-live，再把 Agent 的 provider/model 指向它。默认协议为 openai-responses，也可显式选择 openai-completions，但须由服务端支持。固定版 dsh-llm-deepseek 使用 DeepSeek Messages，换一个网关地址不会自动把它改成 Responses。
+
+contextWindow=32768、maxTokens=2048 是脚本设置的运行限制，不代表模型的真实容量。配置只保存凭据的环境变量名；适配器在请求时读取值，测试工具启动的子进程不继承模型凭据。
+
+## 已有记录怎样读
+
+2026-10-10 使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`、gpt-6-luna 与 Responses 协议，四项共 17 次 HTTP 请求，均为 200：
 
 ```text
 PASS tool: HTTP=2, steps=2, tools=sum:ok
@@ -63,12 +78,20 @@ PASS review: HTTP=4, steps=4, tools=write:denied,read_fixture:ok,review_report:o
 PASS delivery: HTTP=9, steps=9, tools=finish_delivery:denied,bash:ok,write:ok,bash:ok,bash:ok,finish_delivery:ok,write:ok,finish_delivery:denied
 ```
 
-delivery 中第一条 bash 的工具调用成功交回结果，但进程退出码为 1；后两条退出码为 0。`bash:ok` 不能解释为测试通过。插件同时检查 exitCode、timedOut、aborted，最后一个写入使通过证据失效。
+delivery 中第一次 bash:ok 表示工具成功交回进程结果，但该进程退出码为 1，测试实际失败。后面两条检查命令退出码才是 0。插件同时检查退出码、超时和取消，最后一次写入又让通过记录过期。
 
-模型响应不是确定性协议脚本；未来可能少调一次工具、重试或改变步骤，脚本会据断言报错。这里刻意给出了操作顺序，验证的是模型与运行时集成，不是自主编程能力基准。review 提示还明确给出预期缺陷，不能据它证明模型独立发现问题。
+真实模型可能改变调用次数或操作顺序，所以未来输出未必仍是 17 次。脚本会按实际请求与结果检查，条件不符就失败。这里明确提示了操作顺序，review 还给出了预期缺陷，因此它检验集成流程，不能据此评价模型独立发现问题或自主编程的能力。
 
-HTTP 观察器只保留内存中的教学请求体，用来检查真正发出的请求包含工具结果；日志不保存认证头、完整响应或思考内容。每项最多 12 次请求，每次有 90 秒网络超时，180 秒后请求取消 Agent；默认不自动重试。网关的 429、模型不支持或断言失败都不能写成通过。
+## 哪些部分由实验固定
 
-## 本实验不能证明什么
+preset 使用官方文件工具。review 的 write 只增加计数，read_fixture 读取故意放入缺陷的样例；delivery 的 bash 只接受 node --test、git diff --check 两条命令并真实启动程序，write 只改临时 sum.mjs。完整 Shell、Web 界面和操作系统沙箱另见 [Web 实验](../web/README.md)。
 
-Session 使用内存事件，没有在这里证明磁盘持久化、崩溃恢复或完整 Web 页面。已确认官方插件装配与真实模型请求可以相接；完整产品入口、浏览器显示、停止按钮与刷新恢复已在[独立 Web 实验](../web/README.md)中另外验收。DeepSeek Harness 是运行时名称，这次所用 GPT 模型不属于 DeepSeek 模型评测。
+[run.mjs](./run.mjs) 的 `runScenario()` 根据场景装配插件和工具；`globalThis.fetch` 观察器检查实际请求。请求体只保留在内存中，不保存认证头、完整响应或思考内容。每项最多 12 次请求，每次网络超时 90 秒，180 秒后取消 Agent，默认不自动重试。
+
+若失败，先读 HTTP 状态或断言位置。鉴权、模型名、协议不匹配时应核对连接配置；模型没有按预定步骤调用工具时，应检查已发生的调用记录。不要把 HTTP 成功当成整个实验成功。
+
+实验使用内存 Session，未在这里验证磁盘保存或崩溃恢复。DSH 是运行时名称，所用 GPT 模型也不属于 DeepSeek 模型评测。
+
+## 用完后清除当前终端中的凭据
+
+macOS / zsh 执行 `unset OPENAI_API_KEY`；PowerShell 执行 `Remove-Item Env:OPENAI_API_KEY`。其他连接参数可保留，下一次运行时仍需提供凭据。

@@ -1,65 +1,46 @@
-# 真实 Preset 挂载与审查工具边界
+# 一份审查组合，怎样让 Agent 只看见 read
 
-本实验使用 `0.2.1-alpha.2` 的官方 Loader、AgentPresetRegistry、AgentRegistry、Tools 与文件工具。它验证一份组合怎样成为 Agent 的继承能力，以及创建时的工具过滤怎样改变实际请求表面与派发结果。不连接模型，不启动 Web。
+审查代码时，需要读文件，但不希望 Agent 使用写入工具。这个实验对应第 22 讲：先把提示词和文件工具组合起来，再给审查 Agent 施加工具过滤，比较过滤前后的实际行为。
 
-## 运行
+Preset 是一份可复用的插件组合；Host 是提供共享服务的运行环境。把 Preset 登记到注册表，还要将它绑定到具体 Agent，Agent 才会继承其中的提示词和工具。
 
-在仓库根目录，使用 Node.js `^22.19.0 || >=24.0.0`：
+完成[依赖安装](../README.md)后，在仓库根目录运行：
 
 ```sh
-npm ci --ignore-scripts
 node review-preset/verify.mjs
 ```
 
-也可以运行两个组合实验：
+实验不请求模型。它创建真实 Agent，通过官方工具运行时读取临时文件，并主动尝试一次写入。
 
-```sh
-npm test --workspace deepseek-harness-preset-lab
-```
+## 从声明到 Agent，哪一步负责只读
 
-依赖由统一 workspace 和 lockfile 锁定；脚本首先检查直接依赖精确版本。实际执行 npm 发布包，源码阅读固定在 [对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。
-
-## 一份声明，两种 Agent
-
-[preset.yml](./preset.yml) 是普通 Cordis Entry 列表，其中 `@deepseek-ai/dsh-agent-preset` 向 Registry 提交：
-
-```yaml
-config:
-  id: review-config
-  plugins:
-    - id: persona
-      name: '@deepseek-ai/dsh-persona'
-      config:
-        prefix: You review code. Inspect evidence and report findings in severity order.
-        includeRuntimeContext: false
-    - id: tool-fs
-      name: '@deepseek-ai/dsh-tool-fs'
-```
-
-这里节选了声明的核心字段，完整说明与提示词见文件。新版 Persona 使用 `prefix`，不是旧 `text` 字段。组合贡献提示词和工具；Host 提供共享 Registry、文件 Provider、工作目录和运行服务。
-
-脚本通过 Include 加载文件，让真正的声明插件注册和激活 Preset，再在 Agent 的 setup 中绑定：
+[preset.yml](./preset.yml) 声明名为 `review-config` 的组合，包含审查提示词和官方文件工具。名称“只读审查”便于在界面识别；实际工具过滤由下列 API 完成：
 
 ```js
 await ctx.agentPresets.mount(agentCtx, 'review-config')
 agentCtx.tools.restrict({ allow: ['read'] })
 ```
 
-第二行是创建 Agent 时的 API 操作，不是 YAML 自带的安全保证。测试同时创建未过滤的基准 Agent，两者继承同一个 Preset：基准可见 `edit/read/write`，审查 Agent 只可见 `read`。没有安装 attachment store，因此 `read_image` 不注册；不能把当前工具包固定描述为“四个工具必定同时出现”。
+第一行绑定组合，第二行过滤这个 Agent 从上层继承的工具。只复制 YAML，或者只在提示词里写“不要改文件”，都不会执行第二行。
 
-工具还没有进入全局表。`ctx.tools.schemas()` 是空列表，说明贡献留在 Preset Scope；绑定后的 Agent 沿父 Scope 继承这些工具。系统提示词装配也读取同一可见集合，审查 Agent 的工具卡片和文件操作指导不再包含写入工具。
+脚本将同一份 Preset 绑定到两个 Agent，只过滤其中一个：
 
-## 真正执行了哪些操作
+| Agent | 可见工具 | 主动派发 write 的结果 |
+| --- | --- | --- |
+| 未过滤的基准 Agent | edit、read、write | 本实验不使用它写文件 |
+| 审查 Agent | read | 工具不可见，返回 unknown tool；文件内容不变 |
 
-脚本创建自己的临时目录和 `DSH_HOME`，写入测试证据文件，再通过官方 `read` 工具读取它。随后通过真正的 ToolRuntime 派发一次 `write`：由于目标 Agent 看不见该名称，结果是 unknown tool；脚本断言磁盘内容未变。
+工具注册留在 Preset 的作用域中。作用域（Scope）在这里决定工具归属和继承关系：Host 的全局工具表仍为空，绑定后的 Agent 才能沿继承关系看见相应工具。提示词里的工具说明也使用这份可见集合。
 
-最后故意在审查 Agent **自己的 Scope** 注册同名 `write` 定义，只检查可见性，不执行写入。此时 `read/write` 都可见，解除注册又回到 `read`。这是当前实现的明确例外：restriction 过滤继承层，不过滤本层贡献。它不能用于约束同进程中有权注册工具的插件。
+## 再看一个容易遗漏的例外
 
-名称拼错与无 Scope 的全局过滤也会报错，实验都有断言。LocalFileSystem 的 cwd 只决定相对路径解析；临时目录、Persona 中的“不要改文件”和工具不可见性，都不是操作系统沙箱。这里没有安装或验证系统级文件隔离，也没有验证恶意插件、外部进程或其他可写工具受到限制。
+实验最后在审查 Agent 自己的 Scope 内注册一个名为 write 的工具，只检查可见性，不执行写入。此时它又能看见 read、write；撤销这次注册后，工具表回到只有 read。
 
-## 实际结果
+`restrict()` 过滤的是继承层，本层注册不受这次过滤影响。因此，它适合控制 Agent 继承哪些工具，不能约束有权在同进程中注册工具的插件。若要拒绝同一 Scope 中已注册的工具调用，继续看[结构化审查与 Guard 实验](../review-plugin/README.md)。
 
-2026-10-10，macOS / Node.js v24.14.1：
+本实验没有安装附件存储，所以 read_image 不会注册。文件服务的 cwd 只用于解析相对路径；它与工具过滤都不构成操作系统文件隔离。
+
+## 输出怎样对应这些判断
 
 ```text
 PASS preset: Loader -> declaration -> Registry -> Agent; persona and read tool assembled
@@ -67,19 +48,23 @@ PASS restriction: baseline=edit,read,write; review=read; write dispatch rejected
 PASS boundary: own-scope registration survives restriction; lifting it restores read-only surface
 ```
 
-所有 Context 在 finally 中退出，临时文件随后清理，原有 `DSH_HOME` 恢复。命令不依赖 shell 环境变量语法；离线实验已通过 macOS、Ubuntu、Windows 的仓库 CI。
+第一行检查声明确实被加载并绑定；第二行检查工具表、实际读取、写入拒绝与磁盘内容；第三行检查本层注册的例外。脚本还检查拼错工具名、在无 Scope 的全局上下文中设置过滤等错误。
 
-## 把声明带到自己的组合
+打开 [verify.mjs](./verify.mjs)，按加载 preset.yml、创建两个 Agent、read/write 调用、本层 write 注册这四段阅读。装配细节集中在 [harness.mjs](../preset-runtime/harness.mjs)。依赖固定为 DSH `0.2.1-alpha.2`，临时目录和 DSH_HOME 在退出时清理、恢复。
 
-`install.mjs` 只复制到显式目标 YAML 路径，拒绝覆盖内容不同的文件：
+## 放进完整 Web 时还缺什么
+
+推荐直接跟随 [Web 实验](../web/README.md)。准备器会复制声明，并挂载 [web-readonly.mjs](./web-readonly.mjs)：在创建 Agent 和空白会话切换 Preset 时同步过滤，切走或卸载时撤销过滤。只在创建事件处理一次，会漏掉随后选择模式的情况。
+
+若手工复制声明，先将示例路径替换为自己的独立目录。参数包含目标 YAML 文件名：
 
 ```sh
 node review-preset/install.mjs /path/to/isolated-home/review-preset.yml
 ```
 
-复制文件不修改任何默认 Profile，也不会让 Preset 自动出现在产品中。Host 必须提供 `agentPresets/tools/systemPrompt/fs/workingDirectory`，并显式 Include 该文件；产品的 Agent 创建路径还必须绑定它并执行所需 restriction。本目录的离线实验不验证 Web 下拉框；[完整 Web 实验](../web/README.md)另外提供了已实测接入。它还挂载 web-readonly.mjs，在 Agent 创建及空白会话切换 Preset 时同步过滤，切走或卸载时撤销；不能只复制 YAML 后假定权限已生效。
+安装器拒绝覆盖内容不同的文件。宿主仍需显式加载该 YAML，提供 agentPresets、tools、systemPrompt、fs、workingDirectory 等服务，并在 Agent 设置中绑定组合、施加过滤；复制本身不修改默认 Profile。
 
-## 源码依据
+## 可选源码对照
 
 - [声明插件的 schema 和 register 生命周期](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/preset/agent-preset/src/index.ts#L17)。
 - [Preset 的真实 EntryTree 装配与激活审计](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/preset/agent-preset-registry/src/mount.ts#L198)。

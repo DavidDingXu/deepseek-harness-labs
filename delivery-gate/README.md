@@ -1,65 +1,72 @@
-# 交付证据门禁实验
+# 测试通过后又改了文件，旧结果还能用于交付吗
 
-固定使用官方 npm 包 `0.2.1-alpha.2` 与 Cordis `4.0.5-alpha.1`，源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。
+测试刚通过，模型随后又改了代码。交付插件要判断的，除了“是否通过过”，还有“通过之后是否再次修改”。第 24 讲用 `finish_delivery` 把这项检查接入工具执行流程。
 
-在仓库根目录运行，需 Node `^22.19.0 || >=24.0.0` 与 Git：
+完成[依赖安装](../README.md)后，在仓库根目录执行。需要本机有 Git：
 
 ```sh
-npm ci --ignore-scripts
 node delivery-gate/run.mjs
 node --test delivery-gate/delivery-gate.test.mjs
 ```
 
-运行器创建临时 Git 仓库，真实启动 Node 测试与 Git 检查。它通过官方 `ctx.tools.execute()` 调用插件与测试工具，使用真实 Agent 所有权；不会连接模型、修改默认 profile 或提交 Git commit。无论断言成功与否，临时仓库都会在 finally 删除。
+第一条命令创建临时 Git 项目，真实执行 Node 测试与差异检查；第二条检查状态判断的细节。它们不请求模型，不修改默认 Profile，临时项目在退出时删除。
 
-macOS、Node v24.14.1 的实际输出：
+## 跟着一次修复看证据怎样变化
+
+样例里的 sum 故意写成减法。脚本先提交交付请求，再运行测试、修复文件、重新检查，最后追加一行注释：
+
+| 进度 | tests 状态 | diff-check 状态 | 此时的交付条件 |
+| --- | --- | --- | --- |
+| 尚未检查 | missing，缺少结果 | missing | 不满足 |
+| 第一次测试失败 | failed，检查失败 | missing | 不满足 |
+| 修复 sum | stale，旧结果过期 | missing | 不满足 |
+| 测试和差异检查都通过 | passed | passed | 满足 |
+| 又写入一行注释 | stale | stale | 再次不满足 |
+
+输出中的主线与表格一致：
 
 ```text
 PASS delivery: missing -> failed -> stale -> passed -> stale; finish denied/allowed/denied
-  real child processes: failing Node test, passing Node test, git diff --check; independent Agent and missing owner denied
-  registered plugin disposed; official ToolRuntime 0.2.1-alpha.2
-Temporary repository removed.
 ```
 
-独立状态测试还通过了 4 项检查：缺项拒绝、失败与过期区分、未知 Shell 命令令证据过期、命令内部空白不归一化。
+`finish_delivery` 不替你执行测试，只检查之前的工具结果。模型说“测试通过”不会进入证据表；脚本必须观察到对应的命令结果。
 
-## 插件承诺了什么
+## 插件怎样判断“通过之后又改过”
 
-每个新 Agent 有一个 generation 与 evidence Map。`tools/result` 中观察到 `write`、`edit`、`str_replace_editor` 或未匹配检查的 Shell 调用后，generation 增加。失败的变更调用也保守地让旧证据过期。
+每个 Agent 各有一份状态：`generation` 是已观察变更的计数，`evidence` 保存各项检查结果及其所属计数。观察到写工具或未匹配检查的 Shell 调用结果后，计数增加；计数不同的旧结果就变成 stale。
 
-只有精确匹配配置的命令、工具名，以及 `isError=false`、`kind=foreground`、`exitCode=0`、`timedOut=false`、`aborted=false` 的结果才记为通过。命令仅 trim 首尾，不压缩内部空白，避免改变引号内字符串的语义。
+打开 [delivery-gate.mjs](./delivery-gate.mjs)，先看三个入口：
 
-`finish_delivery` 的 guard 必须看到所有检查在当前 generation 通过。guard 只返回拒绝原因或 undefined，不强行 allow，因此不会覆盖其他 guard 的拒绝。状态属于 Agent；另一个 Agent 或没有 Agent 的调用不能借用这些证据。插件可在 Agent 创建后挂载：第一次使用时核对 Registry 中的活跃实例，初始化缺失证据。重新挂载不会恢复旧内存证据，必须重新运行检查。
+- `observeToolResult()` 记录检查结果，或增加变更计数。
+- `deliveryStatus()` 把记录转换成 missing、failed、passed、stale。
+- `apply()` 监听工具结果，并给 finish_delivery 安装 Guard。
 
-工具声明使用 `defineTool` DSL，规范数据再由 output.render 变成模型文本。`delivery_status` 只查询当前状态；`finish_delivery` 不执行测试，它验收之前的工具结果。
+随后读 [run.mjs](./run.mjs)，对照表格中的实际调用。移除 `state.generation += 1` 再运行，第一次修复文件后，预期 generation 为 1 的断言就应失败。恢复这行后重新运行。
 
-## 从哪几段代码读起
+## 工具返回结果，为什么还要检查退出码
 
-打开 [delivery-gate.mjs](./delivery-gate.mjs)，先跟踪一个 Agent 的状态：
+Shell 工具可能成功交回一个“进程退出 1”的结果，因此不能仅凭 `isError=false` 认为测试通过。插件还要求结果是已结束的前台进程、exitCode 为 0、没有超时、没有取消。
 
-```text
-generation=0：没有检查结果 → missing
-测试和差异检查都通过，结果记在 generation=0 → passed，可以交付
-随后观察到一次 write，generation=1 → 旧结果 stale，拒绝交付
-在 generation=1 重新通过两项检查 → passed，重新允许交付
-```
+检查命令与工具名须匹配配置。默认检查为 node --test、git diff --check，允许通过 bash 或 pwsh 执行。命令只去首尾空白，保留内部空白，避免改变引号内字符串的语义。未识别的 Shell 命令可能改文件，会保守地使旧证据过期；失败的变更调用也如此。
 
-`observeToolResult()` 决定什么时候记录证据、什么时候增加计数；`deliveryStatus()` 将证据转换成 missing/failed/passed/stale；`apply()` 把它们接到工具结果事件与 Guard 上。最后看 [run.mjs](./run.mjs) 怎样驱动“失败检查 → 修改 → 通过检查 → 再次修改”。
+状态属于 Registry 当前持有的同一个 Agent 实例，不能靠相同 id 借用。插件晚于 Agent 创建才挂载时，第一次使用会初始化缺少证据的状态。卸载后重新挂载也不会恢复旧记录，需要重新检查。Guard 只返回拒绝原因或 undefined，不会替其他 Guard 强行放行。
 
-想确认计数何时改变，可以在自己的副本中去掉 `observeToolResult()` 里的 `state.generation += 1`，运行 `node delivery-gate/run.mjs`：第一次修复文件后，预期 generation 为 1 的断言就应失败。恢复这行后重新运行。后面的再次修改对照则说明：旧检查即便通过过，也不能继续代表新状态。
+## 计数覆盖到哪里
 
-## 这次运行的范围
+generation 由本 Agent 的工具结果驱动，不是文件内容版本。它能观察 write、edit、str_replace_editor 及未匹配检查的 bash/pwsh；外部改文件、别的 Agent 写同一目录、其他自定义写工具或直接文件操作，可能不在记录中。
 
-`run.mjs` 中名为 `bash` 的工具是明确的 fixture：只接受两条固定命令，用 Node spawnSync 启动真实程序，不解析 Shell 语法。`write` 也只改临时仓库中的 sum.mjs。它们没有声明并发安全，测试按顺序 await；这证明实际工具管线、guard、结果观察与状态迁移接通，不证明官方 Bash/PowerShell、沙箱或 Web 集成已经验证。
+实验按顺序等待每次调用，没有建立检查与修改并发时的工作区快照。它不能替代并发 CI 或操作系统隔离，也只能拒绝 finish_delivery 工具，不能阻止模型用普通文字声称完成。
 
-generation 是本 Agent 的已观察结果计数，不是文件快照、内容哈希或工作区事务。外部改文件、其他 Agent 修改同一目录、自定义写工具、未被观察的 PTC 副作用都可能漏掉；并发调用中检查和写操作交错也没有建立可靠快照。不要把它当作并发 CI 或操作系统边界。它只能拒绝协议工具 `finish_delivery`，无法禁止模型用普通文字宣称完成。
+离线运行器中的 bash 是小型测试执行器，只接受上述两条命令并启动真实子进程，不解释任意 Shell 语法；write 也只改临时 sum.mjs。完整产品中的官方 Shell 与文件工具接入见 [Web 实验](../web/README.md)。
 
-## 可选的完整产品装配
+## 可选的手工安装
 
-`preset.yml` 使用 `@deepseek-ai/dsh-agent-preset` 声明与 persona.prefix。以下命令只把声明和插件复制到指定目录，不更改默认 profile，也不触发自动发现：
+通常可直接使用 Web 准备器。若需手工复制，将示例路径替换为自己的独立目录；参数是目录，不含文件名：
 
 ```sh
 node delivery-gate/install.mjs /absolute/path/to/isolated-home
 ```
 
-输出的 `column-plugins/delivery-gate/preset.yml` 需要由完整发行版组合显式包含；Shell、工作目录、文件能力等依赖由宿主满足。[Web 实验](../web/README.md)提供已验证的完整产品接入。`prepare-fixture.mjs` 仍可用于手工演示，它输出一份保留的临时仓库，使用完需自行删除；一键 run.mjs 则自动清理。
+输出的 column-plugins/delivery-gate/preset.yml 仍需宿主显式加载，Shell、工作目录和文件能力也由宿主提供。安装器不修改默认 Profile。
+
+[prepare-fixture.mjs](./prepare-fixture.mjs) 可单独生成并保留一个演示用 Git 项目，便于手工操作，用完后自行清理；run.mjs 的临时项目则自动清理。实验使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。

@@ -1,79 +1,127 @@
-# 完整 Web：从选择 Preset 到核对执行轨迹
+# 在 Web 中使用只读审查、结构化报告与交付检查
 
-本实验把第 22—24 讲的扩展装进官方 `@deepseek-ai/dsh@0.2.1-alpha.2` Web 产品。浏览器实际提交消息，`gpt-6-luna` 经官方 llm-pi-ai 的 Responses 路由生成工具调用，文件与命令由官方 tool-fs、tool-bash 执行。它会使用模型额度；默认 `npm test` 不启动它。
+前面的离线实验解释了三个扩展各自负责什么。这里把它们装进官方 DSH Web，实际选择模式、发出工具调用，再从界面轨迹与项目文件核对结果。
 
-## 准备独立安装
+本实验固定安装 `@deepseek-ai/dsh@0.2.1-alpha.2`，模型使用 gpt-6-luna，经官方 llm-pi-ai 的 Responses 路由请求服务。会产生模型用量；npm test 不会启动 Web。
 
-需要符合上游要求的 Node.js、npm、Git 和一个支持该模型 Responses 协议的网关。在仓库根目录操作，先按[凭据输入方式](../real-model/README.md#接入配置)设置 `OPENAI_API_KEY` 与 `OPENAI_BASE_URL`，再执行：
+## 先准备独立的产品目录
+
+需要 Node.js 24、npm、Git，以及支持上述模型和 Responses 协议的服务。已经克隆本仓库后，以下脚本都从仓库根目录运行。
+
+先按[接入配置](../real-model/README.md#接入配置)提供 OPENAI_API_KEY 和 OPENAI_BASE_URL。该小节只设置环境变量；本页使用自己的 Web 入口，模型固定为 gpt-6-luna。
+
+然后按系统执行下面一组命令。第一行创建临时目录，第二行打印路径，请记下这个路径；官方产品和演示文件都放在里面。
 
 macOS / zsh：
 
 ```sh
 acceptance_root="$(node -e 'const fs=require("node:fs"),os=require("node:os"),p=require("node:path");console.log(fs.mkdtempSync(p.join(os.tmpdir(),"dsh-web-")))')"
+echo "$acceptance_root"
 npm install --prefix "$acceptance_root" --ignore-scripts --save-exact @deepseek-ai/dsh@0.2.1-alpha.2
 node web/prepare.mjs "$acceptance_root"
 node web/start.mjs "$acceptance_root" 3187
-unset OPENAI_API_KEY
 ```
 
 Windows PowerShell 7：
 
 ```powershell
 $acceptanceRoot = node -e 'const fs=require("node:fs"),os=require("node:os"),p=require("node:path");console.log(fs.mkdtempSync(p.join(os.tmpdir(),"dsh-web-")))'
+$acceptanceRoot
 npm install --prefix $acceptanceRoot --ignore-scripts --save-exact @deepseek-ai/dsh@0.2.1-alpha.2
 node web/prepare.mjs $acceptanceRoot
-try { node web/start.mjs $acceptanceRoot 3187 } finally { Remove-Item Env:OPENAI_API_KEY }
+node web/start.mjs $acceptanceRoot 3187
 ```
 
-准备器拒绝覆盖已有的 `home` 或 `workspace`。它只复制三个扩展、生成 patch 和一个故意写错加法的 Git 样例。凭据引用为环境变量名，配置不保存凭据值。默认模型设为 gpt-6-luna；32768/4096 是本实验的上下文与输出限制，不是模型容量声明。产品会持续提供服务，完成后在启动终端按 Ctrl+C。
-
-从终端打开带访问授权的本地地址。完成欢迎页后，点击“添加工作区”，在浏览器目录选择器中选中刚生成的 `workspace`。**不要把 CLI 的启动目录当成 Web 已选择的目录**：Web 工作区由自己的 controller 管理。准备器另将默认 Documents 位置指向实验目录，避免第一次初始化落在个人文档目录。
-
-目录选择器用官方 browse Host 与 Client 成对替换原自动选择器；必须禁用原来的 `directory-picker`，只改 Entry 的 `name` 不等于替换模块。模型按钮应显示 gpt-6-luna，新会话模式菜单应出现三个实验 Preset。
-
-## 按可观察结果验收
-
-每项使用新会话，先选择对应 Preset，再发送提示。等待运行结束，打开“轨迹”逐项核对工具名称、参数和结果，同时检查实验目录的文件。不能仅凭最终回答声称通过。
-
-| 场景 | 操作与预期 | 反证检查 |
-| --- | --- | --- |
-| 只读配置 | 选“只读审查”，让模型读取 evidence.txt；返回 `HARNESS_WEB_EVIDENCE_72941` | 检查请求工具表只有 read；检查文件内容没有改变 |
-| 审查插件 | 选“结构化审查”，要求先尝试 write 创建 guard-probe.txt，再读 sum.mjs，最后调用 review_report | write 返回 Guard 拒绝；探针文件不存在；报告为 needs_changes，指出第 2 行减法 |
-| 交付正常路径 | 选“交付检查”，先 finish_delivery，再 node --test，修复 sum.mjs，运行 node --test 与 git diff --check，最后 finish_delivery | 第一次 missing 拒绝；首次测试退出 1；修复后退出 0，交付允许 |
-| 交付过期路径 | 在已修复样例上开新的门禁会话，使用下面的负向提示 | 最后一次 write 后不能插入新检查；finish_delivery 返回 tests=stale、diff-check=stale |
-| 停止与恢复 | 有可见回答时点击“停止生成”，刷新；退出并重启服务，再打开历史会话 | 已停止内容仍存在，不能悄悄变成已完成；Session 的 interrupted 与 turn/end 对应 |
-| 窄屏操作 | 390px 打开会话、切换对话/轨迹、展开侧边栏、重开历史 | 输入区与按钮可见，没有整页横向溢出；这不是移动设备全兼容测试 |
-
-审查提示可直接使用：
+prepare 复制扩展、生成 patch 和故意把加法写错的样例；start 启动 Web，并持续占用这个终端。生成的主要内容是：
 
 ```text
-这是一次已授权的临时项目插件验收。先调用 write，尝试把 guard-probe.txt 写成 probe，预期由 Guard 拒绝，不要重试也不要绕过。再读取 sum.mjs，检查加法实现，最后调用 review_report 提交审查结论。请实际调用工具，不要只口头描述。
+临时目录/
+  node_modules/       官方 DSH 安装
+  home/               独立 DSH_HOME，含三个扩展
+  workspace/          演示项目：sum.mjs、测试与 evidence.txt
+  web.patch.yml       模型配置与扩展接入
 ```
 
-过期路径必须与自动修复区分：
+准备器拒绝覆盖已经存在的 home 或 workspace。已成功准备过的目录，重启时只需运行 start；若准备中途失败，则另建新临时目录重新准备。模型凭据只引用环境变量名，不写入 patch。32768/4096 是实验设置的上下文与输出限制，不代表模型容量。
+
+## 打开界面后，先选对工作区
+
+打开启动终端打印的完整本地地址，保留其中的授权参数。完成欢迎页后：
+
+1. 点击“添加工作区”，在目录选择器中选中刚生成的 workspace。
+2. 新建会话，检查模型按钮显示 gpt-6-luna。
+3. 打开模式菜单，应出现“只读审查”“结构化审查”“交付检查”。
+
+Web 有自己的工作区选择。即使终端已经在某个目录启动，页面也仍需选中 workspace。默认 Documents 位置另指向实验目录，避免首次初始化使用个人文档位置。
+
+下面按顺序使用同一个演示项目，每项新建会话并选择对应模式。
+
+## 只读审查：文件标记能否真正读回来
+
+选择“只读审查”，发送：
 
 ```text
-这是明确的负向验收，最后的拒绝是预期结果。严格依次调用：
+读取 evidence.txt，只返回文件中的标记。
+```
+
+应得到 `HARNESS_WEB_EVIDENCE_72941`。打开“轨迹”核对实际 read 调用、参数与返回内容；请求工具表应只开放 read，文件内容保持不变。
+
+这个模式依靠过滤插件限制继承工具。模式名和“不要改文件”的提示词都不能替代过滤操作，机制见[只读组合实验](../review-preset/README.md)。
+
+## 结构化审查：看见写工具，也可以被执行前拒绝
+
+新建会话，选择“结构化审查”。这次故意尝试一个应被拒绝的动作：
+
+```text
+在这个临时演示项目中，先调用 write，尝试把 guard-probe.txt 写成 probe，预期由 Guard 拒绝。不要重试或绕过。再读取 sum.mjs，检查加法实现，最后调用 review_report 提交审查结论。请实际调用工具。
+```
+
+轨迹里应出现 write 的 Guard 拒绝，磁盘上没有 guard-probe.txt；随后 read 读取 sum.mjs，review_report 返回 needs_changes，问题指向第 2 行的减法。报告沿用产品已有的对话与轨迹显示。
+
+如果模型没有发出 write，仅口头表示不会写入，这次就没有经过要观察的拒绝路径。可先运行 `node review-plugin/run.mjs`，在固定调用顺序下检查 Guard，再回来看真实模型的行为。
+
+## 交付检查：先失败，修复后再交付
+
+新建会话，选择“交付检查”。下面示例中的 Shell 工具为 bash；Windows 使用 pwsh，将提示中的 bash 换成 pwsh。
+
+```text
+依次执行并等待每次结果：先调用 finish_delivery，查看缺少证据的拒绝；用 bash 执行 node --test，查看失败；修复 sum.mjs 的加法；再用 bash 执行 node --test 和 git diff --check；两项通过后调用 finish_delivery。请实际运行工具，写文件时提供非空 justification。
+```
+
+核对三处：第一次交付因 missing 被拒绝；第一次测试退出码为 1；修复后的两项检查退出码为 0，最后交付获准。测试通过以命令结果为准。
+
+### 通过后再改一次，旧检查还算数吗
+
+先完成上面的修复，再开新的“交付检查”会话，发送下面提示；Windows 同样将 bash 换成 pwsh：
+
+```text
+这次要观察修改后旧证据过期。严格依次调用：
 1. bash 执行 node --test；
 2. bash 执行 git diff --check；
 3. finish_delivery，预期通过；
 4. 读取 sum.mjs，用 write 只在末尾追加 // stale acceptance；
 5. 立即调用 finish_delivery，预期 stale 拒绝。
-写文件时提供非空 justification。写入后绝不重跑检查，也不修复预期拒绝。
+写文件时提供非空 justification。最后一次写入后不重跑检查，也不修复预期拒绝。
 ```
 
-## 从执行记录解释结果
+最后一次调用应返回 tests=stale、diff-check=stale。若模型在写入后自行重跑了检查，再交付成功，证据已经更新，这次就没有停在预定条件；不能据此判断 Guard 失效。需要稳定复现过期拒绝时，运行 `node delivery-gate/run.mjs`。
 
-只读配置要检查实际请求中的工具表；审查要同时检查 Guard 错误结果与磁盘文件；交付要检查每条命令的退出码和后续 finish_delivery 的结果。页面最终回答用于展示，不能代替这些事实。结构化报告沿用产品已有对话与轨迹显示。
+## 停止后刷新，未写完的内容还在吗
 
-停止后的可见内容保存在带 `interrupted=true` 的 assistant/message 中，当前 Step 闭合，Turn 以用户取消的 aborted 原因结束。刷新重建展示和强杀进程后的恢复是不同测试；模型可能很快答完，单次点击也不能用于评价长输出的取消延迟。
+另开会话，让模型生成较长回答，在仍输出时点击“停止生成”。刷新页面，再退出并重启服务，打开原历史会话，核对已停止的内容仍存在，并带着中断状态。
 
-## 为什么挂载时间会影响插件行为
+实现上，已显示前缀进入 interrupted=true 的 assistant/message，Step 关闭，Turn 以用户取消的 aborted 原因结束。如果回答已经完成，就没有取消到正在执行的尝试。正常停止、刷新、重启也不同于强杀进程，后者需要另行验证。
 
-Web 可以先创建空白 Agent，再选择 Preset。[只读钩子](../review-preset/web-readonly.mjs)同时处理创建和选择事件，切走或卸载时撤销过滤。只在创建时处理，会出现界面已切换、请求工具表却未收窄的问题。
+## 用完后怎样退出
 
-[交付插件](../delivery-gate/delivery-gate.mjs)也可能晚于 Agent 创建才挂载。它在第一次使用时核对 Agent 仍是 Registry 的活跃实例，然后初始化 missing 状态；不能把没赶上事件误当成没有合法 owner。
+在启动终端按 Ctrl+C。macOS / zsh 再执行 `unset OPENAI_API_KEY`，PowerShell 执行 `Remove-Item Env:OPENAI_API_KEY`。临时目录会保留本次样例和结果；不再需要时，按先前打印的路径删除。
 
-交付 Persona 要求修改后重新检查。负向提示希望模型停在拒绝点，但它仍可能重跑检查，再次交付成功。此时要按轨迹区分：证据已更新，说明这次没有停在预定的负向条件，不能据此判断门禁失效。要稳定复现“修改后旧证据被拒绝”，运行 `node delivery-gate/run.mjs`；拒绝由 Guard 决定，模型是否按指定顺序调用工具是另一件事。
+如果端口被占用，可把 start 命令最后的 3187 换成另一个空闲端口，并打开新打印的地址。要重新启动，仍使用同一临时目录，先重新提供模型凭据，再运行 start；无需再次执行 prepare。
 
-已验证环境为 macOS、Node.js 24.14.1、Chrome 154、gpt-6-luna；桌面与 390px 视口均检查了上述交互。这里不覆盖全部产品设置、附件、自动化任务、多浏览器、OS 沙箱绕过、崩溃恢复或 SDK 入口。
+## 需要理解接入代码时再看这里
+
+[prepare.mjs](./prepare.mjs) 复制三个扩展，生成显式 Include 条目，并将默认 Profile 与工作区初始化位置隔离在临时目录。它成对挂载官方 browse Host、Client 目录选择器，并禁用原 directory-picker；只改条目 name 不会替换原模块。
+
+[web-readonly.mjs](../review-preset/web-readonly.mjs) 同时处理创建 Agent 和空白会话选择 Preset：过滤随模式切换添加或撤销。[交付插件](../delivery-gate/delivery-gate.mjs)首次使用时确认 Agent 仍是 Registry 的活跃实例，再初始化 missing 状态。两者都要处理“Agent 已创建，随后才选择模式”的顺序。
+
+已有集成记录来自 macOS、Node.js 24.14.1、Chrome 154、gpt-6-luna。离线三平台 CI 不代表完整 Web 已在三平台验收；本页也不覆盖全部设置、附件、操作系统沙箱绕过或 SDK 入口。核心机制可先用各目录的离线脚本逐项核对。

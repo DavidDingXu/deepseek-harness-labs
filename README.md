@@ -1,14 +1,14 @@
-# DeepSeek Harness 配套实验
+# DeepSeek Harness 架构与设计实验
 
 [![Learning experiments](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml/badge.svg)](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)
 
-这个仓库配合《DeepSeek Harness 架构设计与源码解析》使用。你可以先跑一条工具调用，再逐步改变依赖、执行顺序和检查条件，观察运行时怎样响应。
+这里用可运行的小实验解释 DeepSeek Harness（DSH）的架构设计：工具怎样执行、结果按什么顺序提交、插件退出时怎样清理资源。改变输入后，断言会检查结果是否符合预期。
 
-建议使用 Node.js 24，并安装 Git。支持的 Node.js 范围是 `^22.19.0 || >=24.0.0`。实验固定使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，由统一锁文件管理依赖。
+本仓库配套《DeepSeek Harness 架构设计与源码解析》，各实验文档可独立阅读。核心运行机制来自官方实现，模型响应等可控输入由脚本提供。
 
 ## 第一次运行：看见工具结果进入下一次请求
 
-在 macOS、Linux 终端或 Windows PowerShell 中执行：
+准备好 Node.js 24 和 Git，在终端执行。macOS、Linux 与 Windows PowerShell 使用相同命令：
 
 ```sh
 git clone https://github.com/DavidDingXu/deepseek-harness-labs.git
@@ -17,83 +17,91 @@ npm ci --ignore-scripts
 node runtime/run.mjs --scenario basic
 ```
 
-关键输出应包含：
+安装依赖需要联网；这个实验运行时不请求模型，也不需要 API Key。输出应包含：
 
 ```text
 PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assistant/attempt=0
 ```
 
-这里发生了一个完整往返：脚本模型提出 `sum(19, 23)` → 官方运行时执行工具 → 工具返回 `42` → 下一次模型请求收到同一调用的结果。第二次请求会核对调用编号和结果内容，交接不对就报错。
+可以先看懂其中三个数：工具算出 `42`，一次输入驱动了 `1` 个 Turn，期间发起 `2` 次模型请求。过程是：
 
-这个入口不连接模型服务，也不需要 API Key。模型响应由 `ScriptedAdapter` 固定提供；工具派发、循环推进、消息记录和结果提交运行官方包。先把机制看清，再接真实模型。
+```text
+预定响应提出 sum(19, 23)
+    ↓
+官方运行时执行 sum，得到 42
+    ↓
+第二次请求收到这个工具调用的结果
+```
 
-想改一个条件，打开 [runtime/run.mjs](runtime/run.mjs) 的 `normalTurn()`：将 `b: 23` 改为 `b: 24`，先保留两处结果断言的 `42`。实验应该失败；再把两处预期改为 `43`，应重新通过。具体步骤见 [工具往返实验](runtime/README.md)。
+脚本会核对第二次请求中的调用编号和结果内容。循环推进、工具派发和消息记录都经过官方实现；`ScriptedAdapter` 只负责按顺序提供预定的模型响应。
 
-## 按你的学习进度选择入口
+接下来打开 [runtime/run.mjs](runtime/run.mjs) 的 `normalTurn()`，把 `b: 23` 改成 `b: 24`，先保留结果断言中的 `42`。实验应失败；把两处结果预期都改为 `43` 后应通过。[工具往返实验](runtime/README.md)解释了这两处检查分别观察什么。练习后恢复改动，再运行完整检查。
 
-| 现在想做什么 | 入口 | 需要什么 |
-| --- | --- | --- |
-| 跟着文章验证某个机制 | 下表中的单项命令 | 安装依赖即可；运行时不调用模型 |
-| 检查全部离线实验 | `npm test` | Node.js 与 Git |
-| 换成真实模型请求 | [真实模型实验](real-model/README.md) | 自己的模型配置与凭据，会产生用量 |
-| 在真实界面中操作三种扩展 | [Web 实验](web/README.md) | 独立的官方 DSH 安装与模型配置 |
+## 接下来走哪条路
 
-以下命令都在 **`deepseek-harness-labs` 仓库根目录**执行，依赖只需安装一次。
-
-## 按学习顺序运行
-
-| 讲次 | 实验 | 从仓库根目录运行 | 观察什么 |
-| --- | --- | --- | --- |
-| 01、20 | [工具往返](runtime/README.md) | `node runtime/run.mjs --scenario basic` | 工具结果进入真实下一次请求；再核对调用身份与会话记录 |
-| 03 | [Effect](cordis-lifecycle/README.md) | `node cordis-lifecycle/run.mjs` | 回滚、逆序发起、独立 Effect 并发与内部串行 |
-| 04 | [依赖重激活](dependency-restart/README.md) | `node dependency-restart/run.mjs` | 等待、撤销、局部闭包重建 |
-| 06 | [事件分发](event-modes/README.md) | `node event-modes/run.mjs` | 0/空串短路、异步等待和错误聚合 |
-| 07 | [Waterfall](waterfall/README.md) | `node waterfall/run.mjs` | 调用栈、返回包裹与短路 |
-| 08 | [Profile/Patch](profile-patch/README.md) | `node profile-patch/run.mjs` | 合成配置与真实服务行为同时变化 |
-| 11 | [能力替换](capability-swap/README.md) | `node capability-swap/run.mjs` | 官方文件工具不改，Provider 替换、依赖撤销与拒绝无副作用 |
-| 15、20 | [重试](runtime/README.md) | `node runtime/run.mjs --scenario retry` | 同一 Step 再请求一次，用户输入仍只有一份 |
-| 16、20 | [取消](runtime/README.md) | `node runtime/run.mjs --scenario cancel` | 已展示的前缀以 interrupted 状态保留，Step 和 Turn 闭合 |
-| 16 | [恢复算法](runtime/README.md) | `node runtime/run.mjs --scenario recovery` | 未启动与结果未知，补齐后不重复修复 |
-| 17 | [上下文压缩](compaction/README.md) | `node compaction/run.mjs` | summary 与 replace 分离、摘要失败、回放一致 |
-| 18 | [运行代继承](subagent/README.md) | `node subagent/run.mjs` | 子 Scope 精确继承父代，最后一个使用者退出后回收 |
-| 21 | [并发顺序](runtime/README.md) | `node runtime/run.mjs --scenario order` | body 按 B/A 完成，结果按 A/B 提交 |
-| 22 | [审查 Preset](review-preset/README.md) | `node review-preset/verify.mjs` | 真正挂载、绑定、限制与自有注册例外 |
-| 23 | [审查工具](review-plugin/README.md) | `node review-plugin/run.mjs` | schema、Guard、Agent 隔离与卸载 |
-| 24 | [交付证据](delivery-gate/README.md) | `node delivery-gate/run.mjs` | 真实失败检查、修复通过、再次修改失效 |
-
-没有单独列出实验的讲次侧重设计推演，可以直接阅读文章，无须为了继续学习再搭一个工程。
-
-## 打开代码后，先看哪里
-
-不必从文件第一行一路追到底。先找到场景的输入和关键断言，再按需要回看装配过程。
-
-| 想看清的动作 | 代码入口 |
+| 你想做什么 | 入口 |
 | --- | --- |
-| 发起一次工具调用、检查下一次模型请求 | [runtime/run.mjs](runtime/run.mjs) 的 `normalTurn()` |
-| 让 B 先完成，但停在提交 A 之前 | 同文件的 `parallelOrder()`，关注 `gateB.resolve()` 前后的断言 |
-| 把声明装配成真实插件树 | [preset-runtime/harness.mjs](preset-runtime/harness.mjs) 的 `createHost()`、`mountFile()` |
-| 给审查 Agent 绑定组合、过滤继承工具 | [review-preset/verify.mjs](review-preset/verify.mjs)；界面切换时的过滤在 [web-readonly.mjs](review-preset/web-readonly.mjs) |
-| 注册结构化报告，并在执行前拒绝写操作 | [review-plugin/review-plugin.mjs](review-plugin/review-plugin.mjs) 的 `apply()` |
-| 记录检查结果、使旧证据失效、拒绝过早交付 | [delivery-gate/delivery-gate.mjs](delivery-gate/delivery-gate.mjs) 的 `observeToolResult()`、`deliveryStatus()`、`apply()` |
+| 跟着某一讲验证机制 | 下方的实验目录，单独运行对应脚本 |
+| 一次检查全部离线实验 | 在仓库根目录运行 `npm test` |
+| 把预定响应换成真实模型 | [真实模型实验](real-model/README.md)，需要自己的模型配置与凭据，会产生用量 |
+| 在官方 Web 中使用三个扩展 | [Web 实验](web/README.md)，需要另外安装官方 DSH 产品 |
 
-`runtime` 提供工具调用场景，`preset-runtime` 提供多个组合实验共用的官方服务装配。各目录的 README 解释输入、输出和限制；源码对照放在需要进一步核对的地方。
+下文的“仓库根目录”就是包含本 README、`package.json` 和 `package-lock.json` 的 `deepseek-harness-labs` 目录。所有运行命令均以这里为起点；依赖安装一次即可。
 
-## 三个扩展，分别增加了什么
+## 跑通以后，按这条顺序深入
 
-| 界面名称 | 对应代码 | 关键区别 |
-| --- | --- | --- |
-| 只读审查 | [review-preset](review-preset/README.md) | 过滤 Agent 继承的工具，只开放 read；完整 Web 还需挂载过滤插件 |
-| 结构化审查 | [review-plugin](review-plugin/README.md) | 增加报告协议；write/edit 仍可见，Guard 在主体执行前拒绝它们 |
-| 交付检查 | [delivery-gate](delivery-gate/README.md) | 接受检查结果；后续修改使旧证据过期，重新检查后才能交付 |
+前面的 basic 对应第 01、20 讲：先建立一次工具往返的全貌，再逐步拆开它依赖的机制。
 
-先运行这三个目录的离线实验，再去 Web 中操作，容易分清工具可见性、执行限制和交付条件。安装器只复制到显式指定的位置，不修改默认 Profile；复制 YAML 后仍须由宿主显式加载。
+### 先看插件怎样可靠地协作
 
-## 运行范围与检查
+- 第 03 讲 · [Effect 清理](cordis-lifecycle/README.md)：正常退出与安装失败，资源怎样撤销。
+- 第 04 讲 · [依赖重新就绪](dependency-restart/README.md)：插件重新激活后，计数为何从 1 开始。
+- 第 06 讲 · [事件分发](event-modes/README.md)：返回 0 会不会继续，异步监听器要不要等。
+- 第 07 讲 · [Waterfall](waterfall/README.md)：next() 怎样控制下游调用和返回值。
 
-`npm test` 运行表中的全部离线实验、Web 只读过滤检查和交付状态机单元测试。断言失败会非零退出。需要文件的场景创建独立临时目录并自行清理；Session 恢复场景使用内存日志。
+### 再看配置怎样生效，能力怎样替换
 
-离线实验由 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml) 在 macOS、Ubuntu、Windows / Node.js 24 上检查。真实模型与完整 Web 的实测环境是 macOS，二者不纳入 CI。离线通过只说明受控输入下的机制符合断言；模型行为、完整产品、磁盘恢复与操作系统沙箱分别需要对应的验证。
+- 第 08 讲 · [配置覆盖](profile-patch/README.md)：配置里的 5 改成 9，实际标题是否跟着变。
+- 第 11 讲 · [文件能力替换](capability-swap/README.md)：同一 write 请求，为何随文件实现改变结果。
 
-若安装失败，先核对 Node.js 版本，并在仓库根目录重新运行 `npm ci --ignore-scripts`。若某项断言失败，单独运行该目录的命令，根据错误中的预期值与实际值定位；不要删掉断言来让脚本通过。重新安装依赖不会撤销你对实验源码的修改。
+### 接着改变任务运行中的条件
 
-本项目是独立学习实验，不是 DeepSeek 官方产品。官方实现通过锁定的 npm 依赖使用，各实验说明链接到对应源码。
+- 第 15、20 讲 · [重试](runtime/README.md)：同一 Step 再次请求时，用户输入是否重复。
+- 第 16、20 讲 · [取消](runtime/README.md)：已展示的回答前缀怎样保留在历史里。
+- 第 16 讲 · [恢复算法](runtime/README.md)：怎样区分尚未启动与结果未知。
+- 第 17 讲 · [上下文压缩](compaction/README.md)：摘要等待期间，历史变化怎样影响提交。
+- 第 18 讲 · [组合版本继承](subagent/README.md)：父方仍用旧版，子方应继承哪一版。
+- 第 21 讲 · [并发提交](runtime/README.md)：B 先执行完，为什么结果仍按 A、B 提交。
+
+### 最后把机制组合成可使用的扩展
+
+- 第 22 讲 · [只读审查组合](review-preset/README.md)：组合声明、Agent 绑定与工具过滤怎样配合。
+- 第 23 讲 · [结构化审查插件](review-plugin/README.md)：程序怎样接收报告，Guard 怎样拒绝写操作。
+- 第 24 讲 · [交付检查插件](delivery-gate/README.md)：文件再次修改后，旧的通过记录怎样失效。
+
+未单列实验的讲次侧重设计推演，可直接跟随文章阅读。`preset-runtime` 是几个实验共用的[服务装配代码](preset-runtime/README.md)，需要理解装配过程时再看。
+
+## 三个扩展在 Web 中有什么区别
+
+| 模式名称 | 行为 |
+| --- | --- |
+| 只读审查 | 配套过滤插件把 Agent 继承的工具限制为 read |
+| 结构化审查 | 增加结构化报告工具；write/edit 仍可见，但 Guard 在执行前拒绝调用 |
+| 交付检查 | 记录测试与差异检查的结果；后续修改使旧证据过期，重新检查后才能交付 |
+
+先跑离线实验，再去 Web 中操作，容易把工具可见性、执行限制和交付条件分清。手工安装器只复制文件；由宿主显式加载后，组合和插件才会生效。Web 准备脚本会完成这部分接入。
+
+## 版本、检查和常见问题
+
+Cordis 是 DSH 管理插件、服务和生命周期的底层框架。实验固定使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`。它们是预览版本；升级依赖可能改变接口或行为。支持的 Node.js 范围为 `^22.19.0 || >=24.0.0`，推荐直接使用 24。
+
+`npm test` 不调用模型，覆盖全部离线场景、Web 只读过滤钩子及交付状态测试。有文件操作的实验使用自己的临时目录，退出时清理。会话实验主要使用内存日志，磁盘恢复须另外验证。三平台自动检查见 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)；真实模型和完整 Web 的实测环境为 macOS，二者不纳入 CI。
+
+| 遇到的问题 | 先检查什么 |
+| --- | --- |
+| 找不到 package.json 或脚本 | 当前目录是否是上述仓库根目录 |
+| 缺少依赖、依赖版本不符 | 核对 Node.js 版本，重新运行 `npm ci --ignore-scripts` |
+| 出现 AssertionError | 单独运行该实验，比较错误中的 actual 与 expected；刚改过源码时，核对是否同步调整了实验预期 |
+| Web 中没有三个模式 | 按 Web 文档使用独立安装，检查准备脚本是否完成、启动时是否带上生成的 patch |
+
+本项目是独立学习实验，不是 DeepSeek 官方产品。官方实现通过锁定的 npm 依赖使用，各实验末尾提供需要进一步核对的源码入口。
