@@ -71,7 +71,7 @@ failure 在摘要请求处抛错，检查错误分类为 summary、原因仍能�
 
 ## 装配与运行范围
 
-脚本固定使用 DSH `0.2.1-alpha.2`，依赖见 [package.json](./package.json)。`auto: false` 关闭自动压力触发，`compactionRetries: 0` 让摘要失败不进入缩小摘要的重试。手动调用仍经过真实维护窗口、选区、TokenMeter 估算、摘要请求、稳定性检查与提交。
+脚本固定使用 DSH `0.2.1-rc.2`，依赖见 [package.json](./package.json)。`auto: false` 关闭自动压力触发，`compactionRetries: 0` 让摘要失败不进入缩小摘要的重试。手动调用仍经过真实维护窗口、选区、TokenMeter 估算、摘要请求、稳定性检查与提交。
 
 Adapter 还核对摘要请求中确有旧证据和压缩指令，依据 `purpose === 'compaction'` 识别摘要请求。所有 Context 最后释放，15 秒超时只负责发现挂起。
 
@@ -83,9 +83,9 @@ Adapter 还核对摘要请求中确有旧证据和压缩指令，依据 `purpose
 
 实验运行官方 npm 包，源码链接用于定位相应实现。
 
-- [compactNow：维护窗口与手动选区](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/index.ts#L383)。
-- [默认摘要器：重放输入，调用真实 LLM seam](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/summarizer.ts#L122)。
-- [等待摘要、重验稳定性、错误关闭及 flush](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L173)。
-- [手动选区允许区外新增节点](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L442)。
-- [summary 日志与 replacement 消息分别提交](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L491)。
-- [手动失败的分类](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/compaction/compaction-basic/src/region.ts#L277)。
+- [compactNow：维护窗口与手动选区](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/compaction/compaction-basic/src/index.ts#L383)。
+- [默认摘要器：重放输入，调用真实 LLM seam](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/compaction/compaction-basic/src/summarizer.ts#L122)。
+- [等待摘要、重验稳定性、错误关闭及 flush](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/compaction/compaction-basic/src/region.ts#L173)。
+- [手动选区允许区外新增节点](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/compaction/compaction-basic/src/region.ts#L442)。
+- [summary 日志与 replacement 消息分别提交](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/compaction/compaction-basic/src/region.ts#L491)。
+- [手动失败的分类](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/compaction/compaction-basic/src/region.ts#L277)。

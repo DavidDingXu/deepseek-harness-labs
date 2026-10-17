@@ -7,14 +7,15 @@
     "test:live": "node real-model/run.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "4.0.5-alpha.1"
+    "@deepseek-ai/cordis": "4.0.5"
   },
   "workspaces": [
     "runtime",
     "preset-runtime",
     "compaction",
     "subagent",
-    "real-model"
+    "real-model",
+    "ptc-runtime"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

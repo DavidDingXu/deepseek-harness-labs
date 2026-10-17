@@ -62,6 +62,7 @@ PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assista
 ### 再看配置怎样生效，能力怎样替换
 
 - 第 08 讲 · [配置覆盖](profile-patch/README.md)：配置里的 5 改成 9，实际标题是否跟着变。
+- 第 09、14 讲 · [PTC 进程与状态](ptc-runtime/README.md)：变量为什么能保留，超时和释放后又为什么消失。
 - 第 11 讲 · [文件能力替换](capability-swap/README.md)：同一 write 请求，为何随文件实现改变结果。
 
 ### 接着改变任务运行中的条件
@@ -70,7 +71,7 @@ PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assista
 - 第 16、20 讲 · [取消](runtime/README.md)：已展示的回答前缀怎样保留在历史里。
 - 第 16 讲 · [恢复算法](runtime/README.md)：怎样区分尚未启动与结果未知。
 - 第 17 讲 · [上下文压缩](compaction/README.md)：摘要等待期间，历史变化怎样影响提交。
-- 第 18 讲 · [组合版本继承](subagent/README.md)：父方仍用旧版，子方应继承哪一版。
+- 第 18 讲 · [子任务组合选择](subagent/README.md)：父方仍用旧版，默认继承和显式选 Preset 为何走向不同版本。
 - 第 21 讲 · [并发提交](runtime/README.md)：B 先执行完，为什么结果仍按 A、B 提交。
 
 ### 最后把机制组合成可使用的扩展
@@ -93,7 +94,7 @@ PASS normal: tool=42, turns=1, steps=2, requests=2, assistant/message=2, assista
 
 ## 版本、检查和常见问题
 
-Cordis 是 DSH 管理插件、服务和生命周期的底层框架。实验固定使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`。它们是预览版本；升级依赖可能改变接口或行为。支持的 Node.js 范围为 `^22.19.0 || >=24.0.0`，推荐直接使用 24。
+Cordis 是 DSH 管理插件、服务和生命周期的底层框架。实验固定使用 DSH `0.2.1-rc.2`、Cordis `4.0.5`。它们是预览版本；升级依赖可能改变接口或行为。支持的 Node.js 范围为 `^22.19.0 || >=24.0.0`，推荐直接使用 24。
 
 `npm test` 不调用模型，覆盖全部离线场景、Web 只读过滤钩子及交付状态测试。有文件操作的实验使用自己的临时目录，退出时清理。会话实验主要使用内存日志，磁盘恢复须另外验证。三平台自动检查见 [GitHub Actions](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)；真实模型和完整 Web 的实测环境为 macOS，二者不纳入 CI。
 

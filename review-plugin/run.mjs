@@ -41,4 +41,4 @@ await withRuntime(async ({ ctx, createAgent, execute }) => {
   assert.equal(writes, 2)
   console.log('PASS review: schema validated; local write/edit denied before body; other Agent allowed; disposal restores write')
 })
-console.log('Official runtime 0.2.1-alpha.2; no model, Web, filesystem or persistence experiment.')
+console.log('Official runtime 0.2.1-rc.2; no model, Web, filesystem or persistence experiment.')

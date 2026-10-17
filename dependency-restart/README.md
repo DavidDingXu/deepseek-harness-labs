@@ -31,10 +31,10 @@ reactivated: activations=2, A:1 -> A:2 -> cleanup:A -> B:1
 
 可以把 `let localCount = 0` 移到函数外再运行：脚本应在预期 `B:1` 的断言处失败。将两处预期中的 `B:1` 改成 `B:3` 后应通过。这个改动改变了计数的寿命，依赖的等待、撤销和重激活过程仍然存在。练习后恢复改动。
 
-实验使用 Cordis `4.0.5-alpha.1`，不请求模型。脚本等待真实生命周期转换后再检查结果，不用固定 sleep 猜测何时就绪。
+实验使用 Cordis `4.0.5`，不请求模型。脚本等待真实生命周期转换后再检查结果，不用固定 sleep 猜测何时就绪。
 
 ## 可选源码与示例来源
 
-[Fiber 的依赖与重激活](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/vendor/cordis/src/fiber.ts#L588)、[Provider 清理](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/vendor/cordis/src/reflect.ts#L297)。依赖声明也参与服务访问校验，删掉 inject 后仍访问服务会产生不同错误。
+[Fiber 的依赖与重激活](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/vendor/cordis/src/fiber.ts#L588)、[Provider 清理](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/vendor/cordis/src/reflect.ts#L297)。依赖声明也参与服务访问校验，删掉 inject 后仍访问服务会产生不同错误。
 
 选题参考 [DeepSeek Harness Cookbook 的依赖启停示例](https://github.com/zhangjessey/deepseek-harness-cookbook/blob/2b9d4d97f947017433bfd11dbc0ea601de7f28ca/src/ch02/hello-inject.ts)。本脚本独立编写，用监听器撤销与闭包计数观察重新激活的结果。

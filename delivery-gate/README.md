@@ -69,4 +69,4 @@ node delivery-gate/install.mjs /absolute/path/to/isolated-home
 
 输出的 column-plugins/delivery-gate/preset.yml 仍需宿主显式加载，Shell、工作目录和文件能力也由宿主提供。安装器不修改默认 Profile。
 
-[prepare-fixture.mjs](./prepare-fixture.mjs) 可单独生成并保留一个演示用 Git 项目，便于手工操作，用完后自行清理；run.mjs 的临时项目则自动清理。实验使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/d743267388641bc76f17c45ce8b4c231aed1d32c)。
+[prepare-fixture.mjs](./prepare-fixture.mjs) 可单独生成并保留一个演示用 Git 项目，便于手工操作，用完后自行清理；run.mjs 的临时项目则自动清理。实验使用 DSH `0.2.1-rc.2`、Cordis `4.0.5`，源码入口为[对应版本源码](https://github.com/deepseek-ai/deepseek-harness/tree/687f282e8625c6b8d11ff58211a90524be2e4317)。

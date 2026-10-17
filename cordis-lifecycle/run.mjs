@@ -101,3 +101,37 @@ await groupedDisposing
 assert.deepEqual(grouped, ['B:start', 'B:end', 'A:start', 'A:end'])
 console.log(`one effect: ${grouped.join(' -> ')}`)
 await groupedRoot.fiber.dispose()
+
+// 组内拒绝会跳过后面的清理；Fiber 仍等待其他独立 Effect。
+const rejectedRoot = new Context()
+const rejectedTrace = []
+const cleanupErrors = []
+rejectedRoot.logger.error = error => { cleanupErrors.push(error) }
+const rejectGate = Promise.withResolvers()
+const rejectStarted = Promise.withResolvers()
+const rejectedFiber = await rejectedRoot.plugin((ctx) => {
+  ctx.effect(() => () => { rejectedTrace.push('independent:done') })
+  ctx.effect(function* () {
+    yield () => { rejectedTrace.push('A:close') }
+    yield async () => {
+      rejectedTrace.push('B:start')
+      rejectStarted.resolve()
+      await rejectGate.promise
+      rejectedTrace.push('B:reject')
+      throw new Error('B could not stop')
+    }
+  })
+})
+let rejectedOwnerSettled = false
+const rejectedDisposing = rejectedFiber.dispose().then(() => { rejectedOwnerSettled = true })
+await rejectStarted.promise
+await Promise.resolve()
+assert.equal(rejectedOwnerSettled, false)
+assert.deepEqual(rejectedTrace, ['B:start', 'independent:done'])
+rejectGate.resolve()
+await rejectedDisposing
+assert.deepEqual(rejectedTrace, ['B:start', 'independent:done', 'B:reject'])
+assert.equal(cleanupErrors.length, 1)
+assert.match(cleanupErrors[0].message, /B could not stop/)
+console.log(`grouped failure: ${rejectedTrace.join(' -> ')}; A:close skipped; errors=1`)
+await rejectedRoot.fiber.dispose()

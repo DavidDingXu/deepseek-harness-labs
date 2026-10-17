@@ -371,7 +371,7 @@ assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--scenario'),
   'Usage: node run.mjs [--scenario basic|retry|order|cancel|recovery|all]')
 const selection = args[1] ?? 'all'
 assert.ok(selection === 'all' || Object.hasOwn(scenarios, selection), `Unknown scenario: ${selection}`)
-console.log('Runtime: dsh 0.2.1-alpha.2; Cordis 4.0.5-alpha.1; official npm packages')
+console.log('Runtime: dsh 0.2.1-rc.2; Cordis 4.0.5; official npm packages')
 const runs = selection === 'all' ? Object.values(scenarios) : [scenarios[selection]]
 for (const run of runs) await run()
 console.log(`All ${runs.length} experiments passed; every Context disposed; no profile or persistence files written.`)

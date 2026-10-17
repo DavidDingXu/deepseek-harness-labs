@@ -33,7 +33,7 @@ for (const [name, version] of Object.entries(require('./package.json').dependenc
   assert.equal(require(`${name}/package.json`).version, version, name)
 }
 
-const report = { model, api, endpointOrigin: endpoint.origin, harness: '0.2.1-alpha.2', scenarios: [] }
+const report = { model, api, endpointOrigin: endpoint.origin, harness: '0.2.1-rc.2', scenarios: [] }
 const nativeFetch = globalThis.fetch
 const safeDiagnostic = value => String(value).replaceAll(process.env.OPENAI_API_KEY, '[redacted]').replace(/sk-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 800)
 let activeRequests

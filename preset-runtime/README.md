@@ -21,4 +21,4 @@ npm test --workspace deepseek-harness-preset-lab
 
 `workspace` 是 npm 对本仓库子包的管理方式；这条命令会执行该子包 package.json 中的 test 脚本，不需要进入子目录重新安装依赖。其他实验仍使用各自 README 中的命令。
 
-依赖固定为 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`。共享代码负责装配和生命周期检查；Preset 注册、工具派发、配置覆盖等机制运行官方实现。各调用方负责创建和清理自己的实验目录。
+依赖固定为 DSH `0.2.1-rc.2`、Cordis `4.0.5`。共享代码负责装配和生命周期检查；Preset 注册、工具派发、配置覆盖等机制运行官方实现。各调用方负责创建和清理自己的实验目录。

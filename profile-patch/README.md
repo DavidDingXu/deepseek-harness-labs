@@ -45,7 +45,7 @@ PASS activation: real sessionTitle fallback="a b c d e" -> "a b c d e f g h i"; 
 
 ## 复现时的装配细节
 
-运行使用官方 npm 包 DSH `0.2.1-alpha.2`，共享环境在 [preset-runtime](../preset-runtime/README.md)。脚本将 `DSH_HOME` 指向自己的临时目录，退出后恢复环境并清理文件。
+运行使用官方 npm 包 DSH `0.2.1-rc.2`，共享环境在 [preset-runtime](../preset-runtime/README.md)。脚本将 `DSH_HOME` 指向自己的临时目录，退出后恢复环境并清理文件。
 
 临时目录位于 npm 子包目录之外，无法直接找到子包依赖。脚本因此只把运行副本中的模块名解析成已安装包的绝对 URL，条目 id 和 config 不变；配置覆盖仍由官方 Include 执行。
 
@@ -53,4 +53,4 @@ PASS activation: real sessionTitle fallback="a b c d e" -> "a b c d e f g h i"; 
 
 ## 可选源码对照
 
-[base Bundle 的原始行](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/bundle/base/cordis.patch.yml#L55)、[官方 dump 合成入口](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/boot/app-boot/src/index.ts#L432)、[Patch 覆盖赋值](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/vendor/include/src/index.ts#L115)及 [SessionTitle.refresh](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/session/session-title/src/index.ts#L436)。实验运行官方 npm 包，上述链接用于定位相应实现。
+[base Bundle 的原始行](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/bundle/base/cordis.patch.yml#L55)、[官方 dump 合成入口](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/boot/app-boot/src/index.ts#L432)、[Patch 覆盖赋值](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/vendor/include/src/index.ts#L115)及 [SessionTitle.refresh](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/session/session-title/src/index.ts#L436)。实验运行官方 npm 包，上述链接用于定位相应实现。

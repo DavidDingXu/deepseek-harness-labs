@@ -50,7 +50,7 @@ PASS boundary: own-scope registration survives restriction; lifting it restores 
 
 第一行检查声明确实被加载并绑定；第二行检查工具表、实际读取、写入拒绝与磁盘内容；第三行检查本层注册的例外。脚本还检查拼错工具名、在无 Scope 的全局上下文中设置过滤等错误。
 
-打开 [verify.mjs](./verify.mjs)，按加载 preset.yml、创建两个 Agent、read/write 调用、本层 write 注册这四段阅读。装配细节集中在 [harness.mjs](../preset-runtime/harness.mjs)。依赖固定为 DSH `0.2.1-alpha.2`，临时目录和 DSH_HOME 在退出时清理、恢复。
+打开 [verify.mjs](./verify.mjs)，按加载 preset.yml、创建两个 Agent、read/write 调用、本层 write 注册这四段阅读。装配细节集中在 [harness.mjs](../preset-runtime/harness.mjs)。依赖固定为 DSH `0.2.1-rc.2`，临时目录和 DSH_HOME 在退出时清理、恢复。
 
 ## 放进完整 Web 时还缺什么
 
@@ -66,8 +66,8 @@ node review-preset/install.mjs /path/to/isolated-home/review-preset.yml
 
 ## 可选源码对照
 
-- [声明插件的 schema 和 register 生命周期](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/preset/agent-preset/src/index.ts#L17)。
-- [Preset 的真实 EntryTree 装配与激活审计](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/preset/agent-preset-registry/src/mount.ts#L198)。
-- [Agent 绑定 Registry 所持组合](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/preset/agent-preset-registry/src/index.ts#L282)。
-- [restriction 校验与继承层／本层可见性算法](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/tools/src/index.ts#L1095)。
-- [文件工具的 attachment 条件](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/tool-fs/src/index.ts#L62)。
+- [声明插件的 schema 和 register 生命周期](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/preset/agent-preset/src/index.ts#L17)。
+- [Preset 的真实 EntryTree 装配与激活审计](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/preset/agent-preset-registry/src/mount.ts#L198)。
+- [Agent 绑定 Registry 所持组合](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/preset/agent-preset-registry/src/index.ts#L282)。
+- [restriction 校验与继承层／本层可见性算法](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/tools/src/index.ts#L1095)。
+- [文件工具的 attachment 条件](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/fs/tool-fs/src/index.ts#L62)。

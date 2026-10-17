@@ -2,7 +2,7 @@
 
 前面的离线实验解释了三个扩展各自负责什么。这里把它们装进官方 DSH Web，实际选择模式、发出工具调用，再从界面轨迹与项目文件核对结果。
 
-本实验固定安装 `@deepseek-ai/dsh@0.2.1-alpha.2`，模型使用 gpt-6-luna，经官方 llm-pi-ai 的 Responses 路由请求服务。会产生模型用量；npm test 不会启动 Web。
+本实验固定安装 `@deepseek-ai/dsh@0.2.1-rc.2`，模型使用 gpt-6-luna，经官方 llm-pi-ai 的 Responses 路由请求服务。会产生模型用量；npm test 不会启动 Web。
 
 ## 先准备独立的产品目录
 
@@ -17,7 +17,7 @@ macOS / zsh：
 ```sh
 acceptance_root="$(node -e 'const fs=require("node:fs"),os=require("node:os"),p=require("node:path");console.log(fs.mkdtempSync(p.join(os.tmpdir(),"dsh-web-")))')"
 echo "$acceptance_root"
-npm install --prefix "$acceptance_root" --ignore-scripts --save-exact @deepseek-ai/dsh@0.2.1-alpha.2
+npm install --prefix "$acceptance_root" --ignore-scripts --save-exact @deepseek-ai/dsh@0.2.1-rc.2
 node web/prepare.mjs "$acceptance_root"
 node web/start.mjs "$acceptance_root" 3187
 ```
@@ -27,7 +27,7 @@ Windows PowerShell 7：
 ```powershell
 $acceptanceRoot = node -e 'const fs=require("node:fs"),os=require("node:os"),p=require("node:path");console.log(fs.mkdtempSync(p.join(os.tmpdir(),"dsh-web-")))'
 $acceptanceRoot
-npm install --prefix $acceptanceRoot --ignore-scripts --save-exact @deepseek-ai/dsh@0.2.1-alpha.2
+npm install --prefix $acceptanceRoot --ignore-scripts --save-exact @deepseek-ai/dsh@0.2.1-rc.2
 node web/prepare.mjs $acceptanceRoot
 node web/start.mjs $acceptanceRoot 3187
 ```
@@ -73,7 +73,7 @@ Web 有自己的工作区选择。即使终端已经在某个目录启动，页�
 新建会话，选择“结构化审查”。这次故意尝试一个应被拒绝的动作：
 
 ```text
-在这个临时演示项目中，先调用 write，尝试把 guard-probe.txt 写成 probe，预期由 Guard 拒绝。不要重试或绕过。再读取 sum.mjs，检查加法实现，最后调用 review_report 提交审查结论。请实际调用工具。
+在这个临时演示项目中，先调用 write，尝试把 guard-probe.txt 写成 probe，预期由 Guard 拒绝。不要重试或绕过。再读取 sum.mjs，检查加法实现，最后调用 review_report 提交审查结论。summary 和 problem 用中文。请实际调用工具。
 ```
 
 轨迹里应出现 write 的 Guard 拒绝，磁盘上没有 guard-probe.txt；随后 read 读取 sum.mjs，review_report 返回 needs_changes，问题指向第 2 行的减法。报告沿用产品已有的对话与轨迹显示。

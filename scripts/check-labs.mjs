@@ -8,7 +8,8 @@ for (const script of [
   'review-preset/verify.mjs', 'profile-patch/run.mjs', 'capability-swap/run.mjs',
   'review-plugin/run.mjs', 'delivery-gate/run.mjs',
   'delivery-gate/delivery-gate.test.mjs',
-  'compaction/run.mjs', 'subagent/run.mjs',
+  'compaction/run.mjs', 'subagent/run.mjs', 'subagent/manager.mjs',
+  'ptc-runtime/run.mjs',
 ]) {
   const result = spawnSync(process.execPath, [script], { cwd: root, stdio: 'inherit' })
   if (result.status !== 0) process.exit(result.status ?? 1)

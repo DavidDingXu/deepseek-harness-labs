@@ -69,7 +69,7 @@ contextWindow=32768、maxTokens=2048 是脚本设置的运行限制，不代表�
 
 ## 已有记录怎样读
 
-2026-10-10 使用 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`、gpt-6-luna 与 Responses 协议，四项共 17 次 HTTP 请求，均为 200：
+2026-10-17 使用 DSH `0.2.1-rc.2`、Cordis `4.0.5`、gpt-6-luna 与 Responses 协议，四项共 17 次 HTTP 请求，均为 200：
 
 ```text
 PASS tool: HTTP=2, steps=2, tools=sum:ok

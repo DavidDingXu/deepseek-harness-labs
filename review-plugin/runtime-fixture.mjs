@@ -17,9 +17,9 @@ class UnusedAdapter extends LlmAdapter {
 export async function withRuntime(run) {
   const require = createRequire(import.meta.url)
   for (const name of ['agent', 'agent-loop', 'llm', 'session', 'session-projection', 'system-prompt', 'tools']) {
-    assert.equal(require(`@deepseek-ai/dsh-${name}/package.json`).version, '0.2.1-alpha.2')
+    assert.equal(require(`@deepseek-ai/dsh-${name}/package.json`).version, '0.2.1-rc.2')
   }
-  assert.equal(require('@deepseek-ai/cordis/package.json').version, '4.0.5-alpha.1')
+  assert.equal(require('@deepseek-ai/cordis/package.json').version, '4.0.5')
   const ctx = new Context()
   try {
     for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt]) await ctx.plugin(plugin)

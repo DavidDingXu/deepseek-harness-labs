@@ -20,4 +20,4 @@ for (const name of ['preset.yml', 'review-plugin.mjs']) {
   copyFileSync(from, to)
 }
 
-console.log(`Copied declaration to ${join(target, 'preset.yml')}. Include it explicitly in a 0.2.1-alpha.2 composition; no profile was changed.`)
+console.log(`Copied declaration to ${join(target, 'preset.yml')}. Include it explicitly in a 0.2.1-rc.2 composition; no profile was changed.`)

@@ -69,7 +69,7 @@ try {
     assert.equal(ctx.tools.schemas(agent).some(tool => tool.name === 'finish_delivery'), false)
     console.log('PASS delivery: missing -> failed -> stale -> passed -> stale; finish denied/allowed/denied')
     console.log('  real child processes: failing Node test, passing Node test, git diff --check; independent Agent and missing owner denied')
-    console.log('  registered plugin disposed; official ToolRuntime 0.2.1-alpha.2')
+    console.log('  registered plugin disposed; official ToolRuntime 0.2.1-rc.2')
   })
 } finally { await rm(directory, { recursive: true, force: true }) }
 console.log('Temporary repository removed.')

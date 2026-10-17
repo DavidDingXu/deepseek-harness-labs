@@ -34,6 +34,18 @@ one effect: B:start -> B:end -> A:start -> A:end
 
 第二组把两个清理函数放进同一个生成器 Effect。代码中的 function* 创建生成器，每个 yield 交出一个清理函数；框架先等 B 完成，再清理 A。若 A 的清理必须等待 B，这种组织方式才表达了所需的依赖顺序。
 
-打开 [run.mjs](./run.mjs)，按 `active`、`failed`、`concurrentFiber`、`groupedFiber` 四段阅读。`releaseB()` 和 `releaseInner()` 是脚本控制的放行点，用来检查等待中的状态；实验不靠固定延时制造顺序。
+## 组内有一项拒绝，其他清理还会执行吗
 
-本实验使用 Cordis `4.0.5-alpha.1`，不请求模型，也不操作真实连接或外部业务数据。它说明资源清理的调用和等待规则；业务写入是否可撤销，还取决于资源自身的实现。
+最后一行输出：
+
+```text
+grouped failure: B:start -> independent:done -> B:reject; A:close skipped; errors=1
+```
+
+这一组把 A 的连接关闭、B 的轮询停止放进同一个 Effect，另登记一个独立清理入口。B 先开始，停在 Promise 闸门处；独立入口已经结束，Fiber 仍未报告卸载完成。放行后 B 拒绝，组内较早登记的 A 被跳过，Fiber 记录一次错误后结束本次卸载。
+
+这区分了两种错误处理：Fiber 会等待所有独立入口，但不会补跑单个 Effect 内因拒绝而跳过的清理项。如果 B 停止失败后仍必须尝试关闭 A，应在自己管理的清理函数中用 `try/finally` 表达，并处理可能出现的两项错误。卸载调用完成，不代表失败的资源已经释放。
+
+打开 [run.mjs](./run.mjs)，按 `active`、`failed`、`concurrentFiber`、`groupedFiber`、`rejectedFiber` 五段阅读。`releaseB()`、`releaseInner()` 和 `rejectGate.resolve()` 是脚本控制的放行点，用来检查等待中的状态；实验不靠固定延时制造顺序。
+
+本实验使用 Cordis `4.0.5`，不请求模型，也不操作真实连接或外部业务数据。它说明资源清理的调用和等待规则；业务写入是否可撤销，还取决于资源自身的实现。

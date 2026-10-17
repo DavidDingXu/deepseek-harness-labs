@@ -57,12 +57,12 @@ node capability-swap/run.mjs
 
 这里的 fs-sandbox 在文件服务入口做检查，没有建立操作系统沙箱；绕开服务的 Node 文件操作仍不受它控制。实验也没有迁移到远程工作区。它使用官方工具注册表和文件工具，验证服务替换、依赖撤销与错误传播。
 
-脚本使用锁定的 DSH `0.2.1-alpha.2`，复用 [Preset 共享环境](../preset-runtime/README.md)。退出时卸载运行环境、恢复原 DSH_HOME 并删除临时文件。三平台运行结果见[自动检查](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)。
+脚本使用锁定的 DSH `0.2.1-rc.2`，复用 [Preset 共享环境](../preset-runtime/README.md)。退出时卸载运行环境、恢复原 DSH_HOME 并删除临时文件。三平台运行结果见[自动检查](https://github.com/DavidDingXu/deepseek-harness-labs/actions/workflows/check.yml)。
 
 ## 可选源码对照
 
-- [文件能力约定](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/fs/src/index.ts)：消费者共同依赖的 `FileSystem` 服务。
-- [受限文件 Provider](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/fs-sandbox/src/index.ts)：替代本地实现注册 `ctx.fs`，在变更前执行政策检查。
-- [官方文件工具依赖](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/tool-fs/src/index.ts)：消费者声明 `fs` 等服务依赖。
-- [write 的执行路径](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/tool-fs/src/write.ts)：解析目标后调用当前 Provider。
-- [工具层的政策解析与错误映射](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/fs/tool-fs/src/sandbox.ts)：保留 `FS_SANDBOX_DENIED`，同时提供面向模型的拒绝说明。
+- [文件能力约定](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/fs/fs/src/index.ts)：消费者共同依赖的 `FileSystem` 服务。
+- [受限文件 Provider](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/fs/fs-sandbox/src/index.ts)：替代本地实现注册 `ctx.fs`，在变更前执行政策检查。
+- [官方文件工具依赖](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/fs/tool-fs/src/index.ts)：消费者声明 `fs` 等服务依赖。
+- [write 的执行路径](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/fs/tool-fs/src/write.ts)：解析目标后调用当前 Provider。
+- [工具层的政策解析与错误映射](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/fs/tool-fs/src/sandbox.ts)：保留 `FS_SANDBOX_DENIED`，同时提供面向模型的拒绝说明。

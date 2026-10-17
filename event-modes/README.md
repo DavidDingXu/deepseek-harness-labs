@@ -40,4 +40,4 @@ parallel: waits for both listeners; AggregateError has 2 errors
 
 打开 [run.mjs](./run.mjs)，分别看返回值循环、`lab/emit` 和 `lab/parallel` 三段。异步等待由 Promise 的显式放行控制，不依赖机器快慢。第五种方式 Waterfall 处理调用链与返回包裹，见[下一个实验](../waterfall/README.md)。
 
-本实验使用 Cordis `4.0.5-alpha.1`，不请求模型，也不创建产品会话。
+本实验使用 Cordis `4.0.5`，不请求模型，也不创建产品会话。

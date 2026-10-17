@@ -116,7 +116,7 @@ node runtime/run.mjs
 
 SessionProjectionRegistry 根据会话事件更新已注册的投影状态，供其他组件读取。它与 Session、工具运行时一样使用官方包。
 
-[package.json](./package.json) 固定 DSH `0.2.1-alpha.2`、Cordis `4.0.5-alpha.1`，完整依赖由根目录 lockfile 管理，脚本启动时逐项检查直接依赖版本。支持的 Node.js 版本见[仓库首页](../README.md)。npm 执行的是发布的 JavaScript，下面的 TypeScript 链接便于核对实现。
+[package.json](./package.json) 固定 DSH `0.2.1-rc.2`、Cordis `4.0.5`，完整依赖由根目录 lockfile 管理，脚本启动时逐项检查直接依赖版本。支持的 Node.js 版本见[仓库首页](../README.md)。npm 执行的是发布的 JavaScript，下面的 TypeScript 链接便于核对实现。
 
 本实验中的 Session 接纳不等于磁盘 fsync，取消也不等于进程崩溃；JSONL 保存、损坏文件修复、跨进程恢复和完整产品应分别验证。
 
@@ -124,12 +124,12 @@ SessionProjectionRegistry 根据会话事件更新已注册的投影状态，供
 
 | 实验观察 | 当前官方实现 |
 | --- | --- |
-| followup 进入 next-turn，Turn/Step 驱动 | [agent.ts:154](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/agent.ts#L154)、[Turn loop:299](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/agent.ts#L299) |
-| live stream、message/attempt 结算 | [AssistantStreamAttempt:60](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/assistant-stream.ts#L60)、[settle:78](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/assistant-stream.ts#L78) |
-| 同 Step 内重试与取消前缀 | [agent.ts:465](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/agent.ts#L465)、[request-error:505](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/agent.ts#L505) |
-| 工具准备、派发、最终结果 | [tools/index.ts:1375](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/tools/src/index.ts#L1375) |
-| B先完成，A先提交 | [tool-calls.ts:147 的 commitReady](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/src/tool-calls.ts#L147)、[并发调度测试:230](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/agent-loop/tests/tool-calls.spec.ts#L230) |
-| 失败 attempt 不成为 surface 消息 | [SessionEventMap:341](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/types.ts#L341)、[deriveMessages:984](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/index.ts#L984) |
-| 恢复候选与开放尾部闭合 | [ToolCallRecovery:118](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/repair.ts#L118)、[openTurnClosers:53](https://github.com/deepseek-ai/deepseek-harness/blob/d743267388641bc76f17c45ce8b4c231aed1d32c/packages/core/session/src/repair.ts#L53) |
+| followup 进入 next-turn，Turn/Step 驱动 | [agent.ts:154](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/agent.ts#L154)、[Turn loop:299](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/agent.ts#L299) |
+| live stream、message/attempt 结算 | [AssistantStreamAttempt:60](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/assistant-stream.ts#L60)、[settle:78](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/assistant-stream.ts#L78) |
+| 同 Step 内重试与取消前缀 | [agent.ts:465](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/agent.ts#L465)、[request-error:505](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/agent.ts#L505) |
+| 工具准备、派发、最终结果 | [tools/index.ts:1375](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/tools/src/index.ts#L1375) |
+| B先完成，A先提交 | [tool-calls.ts:147 的 commitReady](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/src/tool-calls.ts#L147)、[并发调度测试:230](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/agent-loop/tests/tool-calls.spec.ts#L230) |
+| 失败 attempt 不成为 surface 消息 | [SessionEventMap:341](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/session/src/types.ts#L341)、[deriveMessages:984](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/session/src/index.ts#L984) |
+| 恢复候选与开放尾部闭合 | [ToolCallRecovery:118](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/session/src/repair.ts#L118)、[openTurnClosers:53](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/packages/core/session/src/repair.ts#L53) |
 
 脚本响应的组织形式参考 [Cookbook 第13章](https://github.com/zhangjessey/deepseek-harness-cookbook/blob/2b9d4d97f947017433bfd11dbc0ea601de7f28ca/src/ch13/agent-loop-demo.ts) 的脚本 adapter，以及官方 MockAdapter/调度测试的可控输入思路。本实验依照上述固定版本独立编写。
